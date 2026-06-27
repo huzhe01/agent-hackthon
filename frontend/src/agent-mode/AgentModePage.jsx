@@ -272,65 +272,19 @@ function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, s
   );
 }
 
-function BriefFieldGrid({ briefFields = {}, phase }) {
-  if (phase !== 'briefing') return null;
-  const fields = Object.entries(BRIEF_FIELD_LABELS);
-  const coreSet = new Set(BRIEF_CORE_FIELDS);
-  const filledCount = BRIEF_CORE_FIELDS.filter((k) => briefFields[k] != null).length;
-
-  return (
-    <div className="mt-3">
-      <div className="mb-2 text-[11px] text-slate-500">
-        Brief 收集进度 · <span className="text-violet-300">{filledCount}/{BRIEF_CORE_FIELDS.length}</span>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {fields.map(([key, label]) => {
-          const value = briefFields[key];
-          const filled = value != null;
-          const isCore = coreSet.has(key);
-          return (
-            <div
-              key={key}
-              className={`rounded-lg p-2 text-xs transition-all ${
-                filled
-                  ? 'border border-violet-500/40 bg-violet-500/10'
-                  : 'border border-dashed border-white/10 bg-white/[0.02]'
-              }`}
-            >
-              <div className={`${filled ? 'text-violet-300' : 'text-slate-600'}`}>
-                {label}{isCore ? ' *' : ''}
-              </div>
-              <div className={`mt-1 font-semibold truncate ${filled ? 'text-white' : 'text-slate-700'}`}>
-                {filled ? (typeof value === 'number' ? `$${value.toLocaleString()}` : String(value)) : '待收集'}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
 function LeftPanel({
   collapsed,
   onToggleCollapsed,
-  activeStage,
-  setActiveStage,
   goal,
-  leftTimeline = [],
-  agentRoster = [],
-  briefCollapsed,
-  onToggleBrief,
   leftPanelWidth,
   onResizePointerDown,
-  phase,
-  briefFields,
   onReset,
   budgetProjects = [],
   activeBudgetProjectId,
   onSelectBudgetProject,
 }) {
   const projectBrief = goal?.name || `${goal?.product || '项目'} · ${goal?.market || '市场'}`;
+  const activeProject = budgetProjects.find((project) => project.id === activeBudgetProjectId);
 
   if (collapsed) {
     return (
@@ -344,27 +298,11 @@ function LeftPanel({
         >
           <Sparkles className="h-5 w-5" />
         </button>
-        <div className="mt-6 flex flex-col gap-2">
-          {stageTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setActiveStage(tab.id)}
-              title={tab.label}
-              className={`flex h-10 w-10 items-center justify-center rounded-lg transition ${
-                activeStage === tab.id ? 'bg-white text-slate-950' : 'text-slate-500 hover:bg-white/5 hover:text-white'
-              }`}
-            >
-              <tab.icon className="h-4 w-4" />
-            </button>
-          ))}
-        </div>
-        <div className="mt-auto flex flex-col items-center gap-3">
-          {agentRoster.slice(0, 4).map((agent) => (
-            <span key={agent.id} title={`${agent.name} · ${agent.status}`}>
-              <StatusDot tone={agent.tone} />
-            </span>
-          ))}
+        <div className="mt-6 flex flex-col items-center gap-2 text-slate-500">
+          <Wallet className="h-5 w-5" />
+          <span className="rounded-full bg-white/10 px-2 py-1 text-[10px] font-semibold">
+            {budgetProjects.length}
+          </span>
         </div>
       </aside>
     );
@@ -401,43 +339,32 @@ function LeftPanel({
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         <GlassCard className="p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">项目 brief</div>
-            <button
-              type="button"
-              onClick={onToggleBrief}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 hover:bg-white/5 hover:text-white"
-              aria-label={briefCollapsed ? '展开项目 brief' : '收起项目 brief'}
-              title={briefCollapsed ? '展开项目 brief' : '收起项目 brief'}
-            >
-              <ChevronRight className={`h-4 w-4 transition ${briefCollapsed ? '' : 'rotate-90'}`} />
-            </button>
+            <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">当前预算项目</div>
+            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+              {activeProject?.status || '进行中'}
+            </span>
           </div>
           <div className="text-sm font-semibold leading-6 text-slate-100">
             {projectBrief}
           </div>
-          {!briefCollapsed && phase !== 'briefing' && (
-            <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-              <div className="rounded-lg bg-white/5 p-2">
-                <div className="text-slate-500">预算</div>
-                <div className="mt-1 font-semibold text-white">{goal?.totalBudget || '—'}</div>
-              </div>
-              <div className="rounded-lg bg-white/5 p-2">
-                <div className="text-slate-500">目标</div>
-                <div className="mt-1 font-semibold text-white">ROAS {goal?.targetRoas || '—'}</div>
-              </div>
+          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+            <div className="rounded-lg bg-white/5 p-2">
+              <div className="text-slate-500">预算</div>
+              <div className="mt-1 font-semibold text-white">{goal?.totalBudget || activeProject?.budget || '—'}</div>
             </div>
-          )}
-          {!briefCollapsed && <BriefFieldGrid briefFields={briefFields} phase={phase} />}
-          {!briefCollapsed && (
-            <button
-              type="button"
-              onClick={onReset}
-              className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-white"
-            >
-              <RefreshCw className="h-3 w-3" />
-              重置项目
-            </button>
-          )}
+            <div className="rounded-lg bg-white/5 p-2">
+              <div className="text-slate-500">目标</div>
+              <div className="mt-1 font-semibold text-white">ROAS {goal?.targetRoas || activeProject?.roas || '—'}</div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onReset}
+            className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-white"
+          >
+            <RefreshCw className="h-3 w-3" />
+            重置项目
+          </button>
         </GlassCard>
 
         {budgetProjects.length > 0 && (
@@ -493,44 +420,6 @@ function LeftPanel({
             </div>
           </GlassCard>
         )}
-
-        {!briefCollapsed && (
-          <div className="mt-3 space-y-3">
-            {leftTimeline.map((item, index) => (
-              <div
-                key={`${item.role}-${index}`}
-                className={`rounded-lg border p-3 text-sm leading-6 ${
-                  item.agent
-                    ? 'border-violet-500/50 bg-violet-500/10 text-slate-200'
-                    : 'border-white/10 bg-white/[0.035] text-slate-300'
-                }`}
-              >
-                <div className={`mb-1 text-[11px] font-semibold ${item.agent ? 'text-violet-300' : 'text-slate-500'}`}>{item.role}</div>
-                {item.content}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div className="border-t border-white/10 p-3">
-        <GlassCard className="p-3">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm font-semibold text-white">托管模块状态</div>
-            <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-300">共享状态</span>
-          </div>
-          <div className="space-y-2">
-            {agentRoster.map((agent) => (
-              <div key={agent.id} className="flex items-center gap-2 text-xs">
-                <StatusDot tone={agent.tone} />
-                <span className="font-semibold text-slate-200">{agent.name}</span>
-                <span className="text-slate-500">{agent.label}</span>
-                <span className="ml-auto text-slate-500">{agent.status}</span>
-              </div>
-            ))}
-          </div>
-        </GlassCard>
-
       </div>
     </aside>
   );
@@ -588,7 +477,7 @@ function LiveRoomCard({ room, selected, onSelect }) {
           <h3 className="truncate text-base font-semibold text-white">{room.name}</h3>
           <p className="mt-1 text-xs text-slate-500">{room.market}</p>
         </div>
-        {selected && <span className="rounded-full bg-violet-500 px-2 py-1 text-[10px] font-bold text-white">推荐</span>}
+        {room.recommended && <span className="rounded-full bg-violet-500 px-2 py-1 text-[10px] font-bold text-white">推荐</span>}
       </div>
       <p className="mt-3 text-sm text-slate-300">{room.role}</p>
       <div className="mt-4 space-y-2 text-xs text-slate-400">
@@ -641,6 +530,53 @@ function ProcessSteps({ descriptions = [] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function PlanVersionList({ planVersions = [], selectedPlan }) {
+  if (!planVersions.length) return null;
+  return (
+    <GlassCard className="p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 text-xs font-semibold text-violet-300">
+          <FileCheck2 className="h-3.5 w-3.5" />
+          方案版本
+        </div>
+        <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-500">
+          当前选择 {selectedPlan || '—'}
+        </span>
+      </div>
+      <div className="grid gap-3 md:grid-cols-3">
+        {planVersions.map((version) => (
+          <div
+            key={version.id}
+            className={`rounded-lg border p-3 ${
+              version.active
+                ? 'border-violet-500/50 bg-violet-500/10'
+                : 'border-white/10 bg-white/[0.035]'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-white">{version.label}</div>
+                <div className="mt-1 text-xs text-slate-500">{version.created_at}</div>
+              </div>
+              {version.active && (
+                <span className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white">当前</span>
+              )}
+            </div>
+            <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{version.summary}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(version.plan_ids || []).map((planId) => (
+                <span key={planId} className="rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-400">
+                  {planId}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </GlassCard>
   );
 }
 
@@ -725,6 +661,7 @@ function PlanCanvas({
   onStartManagedDelivery,
   liveRooms = [],
   planOptions = [],
+  planVersions = [],
   disabledActions = [],
   phase,
   briefFields,
@@ -757,6 +694,8 @@ function PlanCanvas({
         </div>
       </GlassCard>
 
+      <PlanVersionList planVersions={planVersions} selectedPlan={selectedPlan} />
+
       {liveRooms.length > 0 && (
         <div className="grid grid-cols-3 gap-4">
           {liveRooms.map((room) => (
@@ -778,7 +717,7 @@ function PlanCanvas({
                   : 'border-white/10 bg-white/[0.035] hover:border-white/20'
               }`}
             >
-              {plan.id === 'balanced' && <span className="absolute -top-2 right-3 rounded-full bg-violet-500 px-2 py-1 text-[10px] font-bold text-white">推荐</span>}
+              {plan.recommended && <span className="absolute -top-2 right-3 rounded-full bg-violet-500 px-2 py-1 text-[10px] font-bold text-white">推荐</span>}
               <div className="text-lg font-semibold text-white">{plan.title}</div>
               <div className="mt-3 space-y-2 text-sm text-slate-400">
                 {plan.lines.map((line) => <div key={line}>· {line}</div>)}
@@ -1486,6 +1425,7 @@ function MainCanvas(props) {
             onStartManagedDelivery={props.onStartManagedDelivery}
             liveRooms={props.liveRooms}
             planOptions={props.planOptions}
+            planVersions={props.planVersions}
             disabledActions={props.disabledActions}
             phase={props.phase}
             briefFields={props.briefFields}
@@ -1833,7 +1773,6 @@ export default function AgentModePage() {
   const [rightCollapsed, setRightCollapsed] = useState(false);
   const [focusMode, setFocusMode] = useState(false);
   const [theme, setTheme] = useState('light');
-  const [briefCollapsed, setBriefCollapsed] = useState(false);
   const [leftPanelWidth, setLeftPanelWidth] = useState(agentModeFallback.layout.left_panel_width);
   const [rightPanelWidth, setRightPanelWidth] = useState(agentModeFallback.layout.right_panel_width);
   const [models, setModels] = useState(fallbackModels);
@@ -1893,7 +1832,6 @@ export default function AgentModePage() {
         ]);
         dispatch({ type: 'INIT', workbench: workbenchResponse });
         const wb = mergeWorkbench(workbenchResponse);
-        setBriefCollapsed(Boolean(wb.layout?.brief_collapsed));
         setLeftPanelWidth(Number(wb.layout?.left_panel_width || agentModeFallback.layout.left_panel_width));
         setRightPanelWidth(Number(wb.layout?.right_panel_width || agentModeFallback.layout.right_panel_width));
         setChatMessages((current) =>
@@ -1915,9 +1853,8 @@ export default function AgentModePage() {
   }, []);
 
   const currentLiveRooms = wb.live_rooms || [];
-  const currentLeftTimeline = wb.left_timeline || [];
-  const currentAgentRoster = wb.agent_roster?.length ? wb.agent_roster : agentModeFallback.agent_roster;
   const currentPlanOptions = wb.plan_options || [];
+  const currentPlanVersions = wb.plan_versions?.length ? wb.plan_versions : agentModeFallback.plan_versions;
   const currentProcessSteps = wb.process_steps?.length ? wb.process_steps : agentModeFallback.process_steps;
   const currentLeadRows = wb.lead_rows?.length ? wb.lead_rows : agentModeFallback.lead_rows;
   const currentFallbackCampaigns = wb.fallback_campaigns?.length ? wb.fallback_campaigns : agentModeFallback.fallback_campaigns;
@@ -2169,6 +2106,7 @@ export default function AgentModePage() {
     onStartManagedDelivery,
     liveRooms: currentLiveRooms,
     planOptions: currentPlanOptions,
+    planVersions: currentPlanVersions,
     processSteps: currentProcessSteps,
     leadRows: currentLeadRows,
     fallbackCampaigns: currentFallbackCampaigns,
@@ -2211,17 +2149,9 @@ export default function AgentModePage() {
           <LeftPanel
             collapsed={leftCollapsed}
             onToggleCollapsed={() => setLeftCollapsed((c) => !c)}
-            activeStage={activeStage}
-            setActiveStage={setActiveStage}
             goal={goal}
-            leftTimeline={currentLeftTimeline}
-            agentRoster={currentAgentRoster}
-            briefCollapsed={briefCollapsed}
-            onToggleBrief={() => setBriefCollapsed((c) => !c)}
             leftPanelWidth={leftPanelWidth}
             onResizePointerDown={createResizePointerDown('left')}
-            phase={phase}
-            briefFields={briefFields}
             onReset={onReset}
             budgetProjects={currentBudgetProjects}
             activeBudgetProjectId={activeBudgetProjectId}

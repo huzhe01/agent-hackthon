@@ -443,6 +443,16 @@ def _build_budget_projects() -> list:
                 },
                 "selected_room_id": "brand",
                 "selected_plan": "balanced",
+                "plan_versions": [
+                    {
+                        "id": "plan-v1-blender",
+                        "label": "Plan v1",
+                        "created_at": "22:30",
+                        "summary": "美国直播固定预算复盘版本，均衡方案完成托管。",
+                        "plan_ids": ["steady", "balanced", "aggressive"],
+                        "active": True,
+                    },
+                ],
                 "live_demo": deepcopy(_LIVE_DEMO),
             },
         },
@@ -491,13 +501,23 @@ def _build_budget_projects() -> list:
                 ],
                 "live_rooms": [
                     {"id": "sea-creator", "name": "手机壳直播间 A · 达人测评", "market": "TikTok Shop SEA", "role": "前段种草与评论蓄水", "budget": 1100, "spent": 0, "roas": "2.5-2.9", "channel": "TikTok 75% / Shopee 25%", "risk": "低风险", "status": "待启动"},
-                    {"id": "sea-brand", "name": "手机壳直播间 B · 品牌自播", "market": "TikTok + Shopee", "role": "主承接与套装成交", "budget": 1400, "spent": 0, "roas": "2.8-3.4", "channel": "TikTok 55% / Shopee 45%", "risk": "推荐均衡", "status": "待启动"},
+                    {"id": "sea-brand", "name": "手机壳直播间 B · 品牌自播", "market": "TikTok + Shopee", "role": "主承接与套装成交", "budget": 1400, "spent": 0, "roas": "2.8-3.4", "channel": "TikTok 55% / Shopee 45%", "risk": "推荐均衡", "status": "待启动", "recommended": True},
                     {"id": "sea-clearance", "name": "手机壳直播间 C · 尾场清单", "market": "Shopee Live", "role": "优惠券尾场冲量", "budget": 700, "spent": 0, "roas": "3.0-3.6", "channel": "TikTok 35% / Shopee 65%", "risk": "高波动", "status": "待启动"},
                 ],
                 "plan_options": [
                     {"id": "steady", "title": "保守", "lines": ["TikTok 65% / Shopee 35%", "先测磁吸款，透明款限速", "预期 ROAS 2.5-2.9", "优先保护预算"]},
-                    {"id": "balanced", "title": "均衡", "lines": ["TikTok 55% / Shopee 45%", "前段种草，尾场券承接", "预期 ROAS 2.8-3.4", "风险中等，推荐"]},
+                    {"id": "balanced", "title": "均衡", "recommended": True, "lines": ["TikTok 55% / Shopee 45%", "前段种草，尾场券承接", "预期 ROAS 2.8-3.4", "风险中等，推荐"]},
                     {"id": "aggressive", "title": "进取", "lines": ["TikTok 45% / Shopee 55%", "尾场集中放券冲量", "预期 ROAS 3.0-3.6", "库存和券预算波动更高"]},
+                ],
+                "plan_versions": [
+                    {
+                        "id": "plan-v1-phonecase",
+                        "label": "Plan v1",
+                        "created_at": "新预算",
+                        "summary": "东南亚手机壳直播首版方案，TikTok 种草，Shopee 尾场承接。",
+                        "plan_ids": ["steady", "balanced", "aggressive"],
+                        "active": True,
+                    },
                 ],
                 "live_demo": deepcopy(_PHONE_CASE_LIVE_DEMO),
                 "lead_rows": [
@@ -577,6 +597,7 @@ AGENT_MODE_WORKBENCH: Dict[str, Any] = {
     ],
     "live_rooms": [],
     "plan_options": [],
+    "plan_versions": [],
     "live_loop": deepcopy(_INITIAL_LIVE_LOOP),
     "live_demo": deepcopy(_LIVE_DEMO),
     "process_steps": [
@@ -668,6 +689,7 @@ def reset_workbench() -> Dict[str, Any]:
     AGENT_MODE_WORKBENCH["left_timeline"] = []
     AGENT_MODE_WORKBENCH["live_rooms"] = []
     AGENT_MODE_WORKBENCH["plan_options"] = []
+    AGENT_MODE_WORKBENCH["plan_versions"] = []
     AGENT_MODE_WORKBENCH["live_loop"] = deepcopy(_INITIAL_LIVE_LOOP)
     AGENT_MODE_WORKBENCH["live_demo"] = deepcopy(_LIVE_DEMO)
     AGENT_MODE_WORKBENCH["selected_plan"] = "balanced"

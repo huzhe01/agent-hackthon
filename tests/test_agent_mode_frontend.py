@@ -33,7 +33,6 @@ class AgentModeFrontendTest(unittest.TestCase):
             "复盘迭代",
             "数据资产",
             "便携榨汁杯",
-            "托管模块状态",
             "托管顾问",
             "批准并启动托管",
         ]:
@@ -103,13 +102,53 @@ class AgentModeFrontendTest(unittest.TestCase):
         self.assertIn("手机壳直播间 A · 达人测评", defaults_source)
         self.assertIn("磁吸手机壳 Pro", defaults_source)
 
-    def test_agent_mode_has_local_brief_collapse_and_drag_resize_controls(self):
+    def test_agent_mode_left_sidebar_only_manages_budget_projects(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        left_panel_source = page_source[
+            page_source.index("function LeftPanel"):
+            page_source.index("function MetricPill")
+        ]
+
+        for required_marker in [
+            "当前预算项目",
+            "预算项目历史",
+            "onSelectBudgetProject",
+            "budgetProjects.map",
+        ]:
+            self.assertIn(required_marker, left_panel_source)
+
+        for removed_marker in [
+            "项目 brief",
+            "BriefFieldGrid",
+            "leftTimeline.map",
+            "托管模块状态",
+            "agentRoster.map",
+            "已收集：",
+        ]:
+            self.assertNotIn(removed_marker, left_panel_source)
+
+    def test_agent_mode_plan_versions_are_rendered_in_canvas(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        defaults_source = (ROOT / "frontend/src/agent-mode/agentModeDefaults.js").read_text(encoding="utf-8")
+        backend_source = (ROOT / "backend/orchestrator.py").read_text(encoding="utf-8")
+
+        for marker in [
+            "plan_versions",
+            "PlanVersionList",
+            "方案版本",
+            "currentPlanVersions",
+        ]:
+            self.assertIn(marker, page_source + defaults_source + backend_source)
+
+        self.assertIn("plan.recommended", page_source)
+        self.assertIn("room.recommended", page_source)
+        self.assertNotIn("selected && <span", page_source)
+        self.assertNotIn("plan.id === 'balanced' && <span", page_source)
+
+    def test_agent_mode_has_drag_resize_controls(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 
         for ui_marker in [
-            "briefCollapsed",
-            "收起项目 brief",
-            "展开项目 brief",
             "leftPanelWidth",
             "rightPanelWidth",
             "createResizePointerDown",
@@ -194,7 +233,6 @@ class AgentModeFrontendTest(unittest.TestCase):
             "深色",
             "直播后台",
             "托管顾问",
-            "托管模块状态",
         ]:
             self.assertIn(ui_marker, page_source)
 

@@ -373,6 +373,7 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
         {
             "id": "balanced",
             "title": "均衡",
+            "recommended": True,
             "lines": [
                 f"TikTok {balanced_tiktok}% / Meta {balanced_meta}%",
                 "节奏：前段试探后段加码",
@@ -403,10 +404,19 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
     ]
 
     live_rooms = _generate_live_rooms(budget, channels, products, market, meta_cap)
+    plan_versions = _append_plan_version(
+        wb.get("plan_versions", []),
+        products=products,
+        market=market,
+        budget=budget,
+        target_roas=target_roas,
+        meta_cap=meta_cap,
+    )
 
     wb_patch = {
         "phase": "planning",
         "plan_options": plan_options,
+        "plan_versions": plan_versions,
         "live_rooms": live_rooms,
         "brief_complete": True,
         "project": {
@@ -766,6 +776,7 @@ def _generate_live_rooms(budget: float, channels: str, products: str, market: st
             "channel": f"TikTok {100 - brand_meta}% / Meta {brand_meta}%",
             "risk": "推荐均衡",
             "status": "待启动",
+            "recommended": True,
         },
         {
             "id": "clearance",
@@ -780,6 +791,35 @@ def _generate_live_rooms(budget: float, channels: str, products: str, market: st
             "status": "待启动",
         },
     ]
+
+
+def _append_plan_version(
+    existing_versions: List[Dict[str, Any]],
+    *,
+    products: str,
+    market: str,
+    budget: float,
+    target_roas: float,
+    meta_cap: Optional[int],
+) -> List[Dict[str, Any]]:
+    """Create a new immutable plan version and mark older versions inactive."""
+    next_index = len(existing_versions or []) + 1
+    summary_parts = [
+        f"{products} · {market}",
+        f"预算 ${budget:,.0f}",
+        f"目标 ROAS {target_roas:g}",
+    ]
+    if meta_cap:
+        summary_parts.append(f"Meta ≤{meta_cap}%")
+    inactive_versions = [{**version, "active": False} for version in (existing_versions or [])]
+    return inactive_versions + [{
+        "id": f"plan-v{next_index}-{int(time.time() * 1000)}",
+        "label": f"Plan v{next_index}",
+        "created_at": _clock_label(),
+        "summary": "，".join(summary_parts),
+        "plan_ids": ["steady", "balanced", "aggressive"],
+        "active": True,
+    }]
 
 
 def _parse_number(raw: str) -> Optional[float]:

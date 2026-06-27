@@ -73,6 +73,7 @@ export const agentModeFallback = {
   ],
   live_rooms: [],
   plan_options: [],
+  plan_versions: [],
   live_loop: {
     status: 'idle',
     steps: [],
@@ -542,6 +543,16 @@ agentModeFallback.budget_projects = [
       },
       selected_room_id: 'brand',
       selected_plan: 'balanced',
+      plan_versions: [
+        {
+          id: 'plan-v1-blender',
+          label: 'Plan v1',
+          created_at: '22:30',
+          summary: '美国直播固定预算复盘版本，均衡方案完成托管。',
+          plan_ids: ['steady', 'balanced', 'aggressive'],
+          active: true,
+        },
+      ],
       live_demo: agentModeFallback.live_demo,
     },
   },
@@ -612,6 +623,7 @@ agentModeFallback.budget_projects = [
           channel: 'TikTok 55% / Shopee 45%',
           risk: '推荐均衡',
           status: '待启动',
+          recommended: true,
         },
         {
           id: 'sea-clearance',
@@ -628,8 +640,18 @@ agentModeFallback.budget_projects = [
       ],
       plan_options: [
         { id: 'steady', title: '保守', lines: ['TikTok 65% / Shopee 35%', '先测磁吸款，透明款限速', '预期 ROAS 2.5-2.9', '优先保护预算'] },
-        { id: 'balanced', title: '均衡', lines: ['TikTok 55% / Shopee 45%', '前段种草，尾场券承接', '预期 ROAS 2.8-3.4', '风险中等，推荐'] },
+        { id: 'balanced', title: '均衡', recommended: true, lines: ['TikTok 55% / Shopee 45%', '前段种草，尾场券承接', '预期 ROAS 2.8-3.4', '风险中等，推荐'] },
         { id: 'aggressive', title: '进取', lines: ['TikTok 45% / Shopee 55%', '尾场集中放券冲量', '预期 ROAS 3.0-3.6', '库存和券预算波动更高'] },
+      ],
+      plan_versions: [
+        {
+          id: 'plan-v1-phonecase',
+          label: 'Plan v1',
+          created_at: '新预算',
+          summary: '东南亚手机壳直播首版方案，TikTok 种草，Shopee 尾场承接。',
+          plan_ids: ['steady', 'balanced', 'aggressive'],
+          active: true,
+        },
       ],
       live_demo: phoneCaseLiveDemo,
       lead_rows: [

@@ -179,12 +179,29 @@ class LiveLoopOrchestratorTest(unittest.TestCase):
         self.assertEqual(workbench["brief_fields"]["channels"], "TikTok + Meta")
         self.assertEqual(workbench["brief_fields"]["constraints"], "Meta 最多占 45%")
         self.assertEqual(len(workbench["plan_options"]), 3)
+        self.assertEqual(len(workbench["plan_versions"]), 1)
+        self.assertEqual(workbench["plan_versions"][0]["label"], "Plan v1")
+        self.assertTrue(workbench["plan_versions"][0]["active"])
+        self.assertEqual(
+            [plan.get("recommended", False) for plan in workbench["plan_options"]],
+            [False, True, False],
+        )
+        self.assertTrue(next(room for room in workbench["live_rooms"] if room["id"] == "brand")["recommended"])
         plan_text = "\n".join("\n".join(plan["lines"]) for plan in workbench["plan_options"])
         self.assertIn("Meta 45%", plan_text)
         self.assertNotIn("Meta 60%", plan_text)
         room_text = "\n".join(room["channel"] for room in workbench["live_rooms"])
         self.assertIn("Meta 45%", room_text)
         self.assertNotIn("Meta 60%", room_text)
+
+        second_result, _second_events = self.orchestrator._handle_generate_plans({
+            "brief_summary": "再次生成",
+        })
+        self.assertTrue(second_result["success"])
+        versions = self.store.read_workbench()["plan_versions"]
+        self.assertEqual([version["label"] for version in versions], ["Plan v1", "Plan v2"])
+        self.assertFalse(versions[0]["active"])
+        self.assertTrue(versions[1]["active"])
 
     def test_extract_brief_has_deterministic_followup_when_core_fields_missing(self):
         result, _events = self.orchestrator._handle_extract_brief({
