@@ -27,7 +27,7 @@ class AgentModeFrontendTest(unittest.TestCase):
             searchable_source += defaults_path.read_text(encoding="utf-8")
 
         for required_text in [
-            "MaiDeal 直播后台",
+            "MaiDeal工作台",
             "方案规划",
             "直播托管",
             "复盘迭代",
@@ -37,6 +37,10 @@ class AgentModeFrontendTest(unittest.TestCase):
             "批准并启动托管",
         ]:
             self.assertIn(required_text, searchable_source)
+
+        self.assertNotIn("MaiDeal 直播后台", page_source)
+        self.assertNotIn("MaiDeal工作台 ·", page_source)
+        self.assertNotIn("广告主预算全托管 · 直播间投流工作台", page_source)
 
     def test_agent_mode_page_uses_existing_agent_and_metrics_apis(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
@@ -102,7 +106,7 @@ class AgentModeFrontendTest(unittest.TestCase):
         self.assertIn("手机壳直播间 A · 达人测评", defaults_source)
         self.assertIn("磁吸手机壳 Pro", defaults_source)
 
-    def test_agent_mode_left_sidebar_only_manages_budget_projects(self):
+    def test_agent_mode_left_sidebar_manages_budget_projects_with_compact_agent_status(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
         left_panel_source = page_source[
             page_source.index("function LeftPanel"):
@@ -112,8 +116,12 @@ class AgentModeFrontendTest(unittest.TestCase):
         for required_marker in [
             "当前预算项目",
             "预算项目历史",
+            "BudgetProjectHistoryList",
+            "AgentStatusDock",
+            "子 Agent 状态",
             "onSelectBudgetProject",
             "budgetProjects.map",
+            "agentRoster.map",
         ]:
             self.assertIn(required_marker, left_panel_source)
 
@@ -122,28 +130,90 @@ class AgentModeFrontendTest(unittest.TestCase):
             "BriefFieldGrid",
             "leftTimeline.map",
             "托管模块状态",
-            "agentRoster.map",
             "已收集：",
+            "project.budget",
+            "project.spent",
+            "project.roas",
         ]:
             self.assertNotIn(removed_marker, left_panel_source)
 
-    def test_agent_mode_plan_versions_are_rendered_in_canvas(self):
+    def test_agent_mode_plan_canvas_uses_channel_list_for_live_room_switching(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        plan_canvas_source = page_source[
+            page_source.index("function PlanCanvas"):
+            page_source.index("function LiveLoopPanel")
+        ]
+
+        for marker in [
+            "ChannelPlanSelector",
+            "渠道 / 直播间",
+            "activeRoom",
+            "md:grid-cols-[240px_minmax(0,1fr)]",
+            "模式方案",
+            "liveRooms.map",
+            "planOptions.map",
+        ]:
+            self.assertIn(marker, plan_canvas_source)
+
+        self.assertNotIn("<LiveRoomCard", plan_canvas_source)
+        self.assertNotIn("grid grid-cols-3 gap-4", plan_canvas_source)
+
+    def test_agent_mode_plan_versions_are_kept_in_data_but_hidden_from_canvas(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
         defaults_source = (ROOT / "frontend/src/agent-mode/agentModeDefaults.js").read_text(encoding="utf-8")
         backend_source = (ROOT / "backend/orchestrator.py").read_text(encoding="utf-8")
 
-        for marker in [
-            "plan_versions",
-            "PlanVersionList",
-            "方案版本",
-            "currentPlanVersions",
-        ]:
-            self.assertIn(marker, page_source + defaults_source + backend_source)
+        self.assertIn("plan_versions", defaults_source + backend_source)
+        self.assertNotIn("PlanVersionList", page_source)
+        self.assertNotIn("方案版本", page_source)
+        self.assertNotIn("currentPlanVersions", page_source)
 
         self.assertIn("plan.recommended", page_source)
         self.assertIn("room.recommended", page_source)
         self.assertNotIn("selected && <span", page_source)
         self.assertNotIn("plan.id === 'balanced' && <span", page_source)
+
+    def test_agent_mode_budget_history_fills_left_panel_space(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        left_panel_source = page_source[
+            page_source.index("function LeftPanel"):
+            page_source.index("function MetricPill")
+        ]
+
+        self.assertIn("min-h-0 flex flex-1 flex-col overflow-y-auto p-3", left_panel_source)
+        self.assertIn('GlassCard className="mt-3 flex-1 p-3"', left_panel_source)
+
+    def test_agent_mode_budget_project_history_rows_are_title_only(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        history_source = page_source[
+            page_source.index("function BudgetProjectHistoryList"):
+            page_source.index("function AgentStatusDock")
+        ]
+
+        self.assertIn("project.name", history_source)
+        self.assertIn("onSelectBudgetProject", history_source)
+
+        for hidden_detail in [
+            "project.status",
+            "project.budget",
+            "project.spent",
+            "project.roas",
+            "当前",
+            "待托管",
+        ]:
+            self.assertNotIn(hidden_detail, history_source)
+
+    def test_agent_mode_live_budget_pool_appears_before_strategy_loop(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        live_canvas_source = page_source[
+            page_source.index("function LiveCanvas"):
+            page_source.index("function LeadsCanvas")
+        ]
+
+        self.assertLess(
+            live_canvas_source.index("统一预算池"),
+            live_canvas_source.index("<LiveLoopPanel"),
+        )
 
     def test_agent_mode_has_drag_resize_controls(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
@@ -184,20 +254,25 @@ class AgentModeFrontendTest(unittest.TestCase):
             "currentLiveFrame",
             "budget_pool",
             "sku_ads",
-            "tick_interval_ms: 60000",
-            "onPauseLiveDemo",
-            "onTakeOverLiveDemo",
-            "已暂停巡检",
+            "tick_interval_ms: 10000",
+            "currentActiveAlert",
+            "approvalPauseRef",
         ]:
             self.assertIn(ui_marker, page_source + defaults_source)
 
         for removed_demo_button in [
             "运行一轮投中巡检",
             "模拟高风险动作",
+            "人工接管",
+            "人工接管中",
+            "已暂停巡检",
+            "持续自动巡检",
         ]:
             self.assertNotIn(removed_demo_button, page_source)
 
         self.assertIn("api.chatWithOrchestrator", page_source)
+        self.assertIn("setLiveDemoPlaying(false)", page_source)
+        self.assertIn("setLiveDemoPlaying(true)", page_source)
 
     def test_agent_mode_review_owns_lead_assets_and_report_generation(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
@@ -247,7 +322,6 @@ class AgentModeFrontendTest(unittest.TestCase):
         for ai_heavy_label in [
             "Agent Mode</span>",
             "Agent 对话</span>",
-            "子 Agent 状态</div>",
             "Planning Agent 输出",
             "Delivery Agent 运行中",
             "Signal Agent 实时建档",

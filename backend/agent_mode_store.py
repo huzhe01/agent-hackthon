@@ -33,7 +33,7 @@ _INITIAL_LIVE_LOOP: Dict[str, Any] = {
 
 _LIVE_DEMO: Dict[str, Any] = {
     "enabled": True,
-    "tick_interval_ms": 60000,
+    "tick_interval_ms": 10000,
     "frames": [
         {
             "id": "20-00",
@@ -273,7 +273,7 @@ _LIVE_DEMO: Dict[str, Any] = {
 
 _PHONE_CASE_LIVE_DEMO: Dict[str, Any] = {
     "enabled": True,
-    "tick_interval_ms": 60000,
+    "tick_interval_ms": 10000,
     "frames": [
         {
             "id": "sg-20-00",

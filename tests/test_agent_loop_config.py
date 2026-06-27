@@ -159,7 +159,7 @@ class AgentLoopConfigTest(unittest.TestCase):
         self.assertEqual(sea_project["workbench"]["live_demo"]["frames"][0]["sku_ads"][0]["name"], "磁吸手机壳 Pro")
 
         frames = workbench["live_demo"]["frames"]
-        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 60000)
+        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 10000)
         self.assertGreaterEqual(len(frames), 6)
         for frame_key in ["metrics", "budget_pool", "sku_ads", "events", "steps"]:
             self.assertIn(frame_key, frames[0])

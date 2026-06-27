@@ -246,10 +246,7 @@ function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, s
       <div className="flex min-w-0 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-base font-black text-white">麦</div>
         <div className="min-w-0">
-          <div className="truncate text-base font-semibold text-white">
-            MaiDeal 直播后台 <span className="font-normal text-slate-500">托管工作台</span>
-          </div>
-          <div className="mt-0.5 truncate text-xs text-slate-500">广告主预算全托管 · 直播间投流工作台</div>
+          <div className="truncate text-base font-semibold text-white">MaiDeal工作台</div>
         </div>
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </div>
@@ -279,6 +276,7 @@ function LeftPanel({
   leftPanelWidth,
   onResizePointerDown,
   onReset,
+  agentRoster = [],
   budgetProjects = [],
   activeBudgetProjectId,
   onSelectBudgetProject,
@@ -336,7 +334,7 @@ function LeftPanel({
         </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      <div className="min-h-0 flex flex-1 flex-col overflow-y-auto p-3">
         <GlassCard className="p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">当前预算项目</div>
@@ -367,61 +365,75 @@ function LeftPanel({
           </button>
         </GlassCard>
 
-        {budgetProjects.length > 0 && (
-          <GlassCard className="mt-3 p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">预算项目历史</div>
-              <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
-                {budgetProjects.length} 个项目
-              </span>
-            </div>
-            <div className="space-y-2">
-              {budgetProjects.map((project) => {
-                const active = project.id === activeBudgetProjectId;
-                return (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => onSelectBudgetProject?.(project.id)}
-                    className={`w-full rounded-lg border p-3 text-left transition ${
-                      active
-                        ? 'border-violet-500/60 bg-violet-500/10'
-                        : 'border-white/10 bg-white/[0.035] hover:border-violet-300/60 hover:bg-white/10'
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold text-white">{project.name}</div>
-                        <div className="mt-1 text-xs text-slate-500">{project.market}</div>
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        active ? 'bg-violet-600 text-white' : 'bg-white/10 text-slate-500'
-                      }`}>
-                        {active ? '当前' : project.status}
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                      <div className="rounded-lg bg-white/50 p-2">
-                        <div className="text-slate-500">预算</div>
-                        <div className="mt-1 font-semibold text-slate-900">{project.budget}</div>
-                      </div>
-                      <div className="rounded-lg bg-white/50 p-2">
-                        <div className="text-slate-500">已消耗</div>
-                        <div className="mt-1 font-semibold text-slate-900">{project.spent}</div>
-                      </div>
-                      <div className="rounded-lg bg-white/50 p-2">
-                        <div className="text-slate-500">ROAS</div>
-                        <div className="mt-1 font-semibold text-emerald-700">{project.roas}</div>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </GlassCard>
-        )}
+        <BudgetProjectHistoryList
+          budgetProjects={budgetProjects}
+          activeBudgetProjectId={activeBudgetProjectId}
+          onSelectBudgetProject={onSelectBudgetProject}
+        />
       </div>
+
+      <AgentStatusDock agentRoster={agentRoster} />
     </aside>
+  );
+}
+
+function BudgetProjectHistoryList({ budgetProjects = [], activeBudgetProjectId, onSelectBudgetProject }) {
+  if (!budgetProjects.length) return null;
+
+  return (
+    <GlassCard className="mt-3 flex-1 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">预算项目历史</div>
+        <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
+          {budgetProjects.length} 个项目
+        </span>
+      </div>
+      <div className="space-y-1.5">
+        {budgetProjects.map((project) => {
+          const active = project.id === activeBudgetProjectId;
+          return (
+            <button
+              key={project.id}
+              type="button"
+              onClick={() => onSelectBudgetProject?.(project.id)}
+              aria-pressed={active}
+              title={project.name}
+              className={`flex h-9 w-full items-center rounded-lg border px-2.5 text-left text-xs transition ${
+                active
+                  ? 'border-violet-500/60 bg-violet-500/10'
+                  : 'border-white/10 bg-white/[0.035] hover:border-violet-300/60 hover:bg-white/10'
+              }`}
+            >
+              <span className="min-w-0 flex-1 truncate font-semibold text-white">{project.name}</span>
+            </button>
+          );
+        })}
+      </div>
+    </GlassCard>
+  );
+}
+
+function AgentStatusDock({ agentRoster = [] }) {
+  if (!agentRoster.length) return null;
+
+  return (
+    <div className="border-t border-white/10 p-3">
+      <GlassCard className="p-3">
+        <div className="mb-2 flex items-center justify-between">
+          <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">子 Agent 状态</div>
+          <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-600">共享状态</span>
+        </div>
+        <div className="space-y-1.5">
+          {agentRoster.map((agent) => (
+            <div key={agent.id} className="flex items-center gap-2 text-xs">
+              <StatusDot tone={agent.tone} pulse={agent.status !== '待命'} />
+              <span className="min-w-0 flex-1 truncate font-semibold text-white">{agent.name}</span>
+              <span className="text-slate-500">{agent.status}</span>
+            </div>
+          ))}
+        </div>
+      </GlassCard>
+    </div>
   );
 }
 
@@ -533,53 +545,6 @@ function ProcessSteps({ descriptions = [] }) {
   );
 }
 
-function PlanVersionList({ planVersions = [], selectedPlan }) {
-  if (!planVersions.length) return null;
-  return (
-    <GlassCard className="p-4">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs font-semibold text-violet-300">
-          <FileCheck2 className="h-3.5 w-3.5" />
-          方案版本
-        </div>
-        <span className="rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-500">
-          当前选择 {selectedPlan || '—'}
-        </span>
-      </div>
-      <div className="grid gap-3 md:grid-cols-3">
-        {planVersions.map((version) => (
-          <div
-            key={version.id}
-            className={`rounded-lg border p-3 ${
-              version.active
-                ? 'border-violet-500/50 bg-violet-500/10'
-                : 'border-white/10 bg-white/[0.035]'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <div className="text-sm font-semibold text-white">{version.label}</div>
-                <div className="mt-1 text-xs text-slate-500">{version.created_at}</div>
-              </div>
-              {version.active && (
-                <span className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white">当前</span>
-              )}
-            </div>
-            <p className="mt-3 line-clamp-2 text-xs leading-5 text-slate-500">{version.summary}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(version.plan_ids || []).map((planId) => (
-                <span key={planId} className="rounded-full bg-white/5 px-2 py-1 text-[11px] font-semibold text-slate-400">
-                  {planId}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </GlassCard>
-  );
-}
-
 function BriefingCanvas({ briefFields = {} }) {
   const fields = Object.entries(BRIEF_FIELD_LABELS);
   const coreSet = new Set(BRIEF_CORE_FIELDS);
@@ -661,7 +626,6 @@ function PlanCanvas({
   onStartManagedDelivery,
   liveRooms = [],
   planOptions = [],
-  planVersions = [],
   disabledActions = [],
   phase,
   briefFields,
@@ -669,6 +633,8 @@ function PlanCanvas({
   if (phase === 'briefing') {
     return <BriefingCanvas briefFields={briefFields} />;
   }
+  const activeRoom = liveRooms.find((room) => room.id === selectedRoomId) || liveRooms.find((room) => room.recommended) || liveRooms[0] || null;
+  const roomPlanOptions = activeRoom?.plan_options?.length ? activeRoom.plan_options : planOptions;
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
@@ -694,42 +660,16 @@ function PlanCanvas({
         </div>
       </GlassCard>
 
-      <PlanVersionList planVersions={planVersions} selectedPlan={selectedPlan} />
-
       {liveRooms.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          {liveRooms.map((room) => (
-            <LiveRoomCard key={room.id} room={room} selected={selectedRoomId === room.id} onSelect={setSelectedRoomId} />
-          ))}
-        </div>
-      )}
-
-      {planOptions.length > 0 && (
-        <div className="grid grid-cols-3 gap-4">
-          {planOptions.map((plan) => (
-            <button
-              key={plan.id}
-              type="button"
-              onClick={() => setSelectedPlan(plan.id)}
-              className={`relative rounded-lg border p-4 text-left transition ${
-                selectedPlan === plan.id
-                  ? 'border-violet-500/70 bg-gradient-to-b from-violet-500/20 to-white/[0.025]'
-                  : 'border-white/10 bg-white/[0.035] hover:border-white/20'
-              }`}
-            >
-              {plan.recommended && <span className="absolute -top-2 right-3 rounded-full bg-violet-500 px-2 py-1 text-[10px] font-bold text-white">推荐</span>}
-              <div className="text-lg font-semibold text-white">{plan.title}</div>
-              <div className="mt-3 space-y-2 text-sm text-slate-400">
-                {plan.lines.map((line) => <div key={line}>· {line}</div>)}
-              </div>
-              <div className={`mt-4 flex h-9 items-center justify-center rounded-lg text-sm font-semibold ${
-                selectedPlan === plan.id ? 'bg-violet-500 text-white' : 'bg-white/5 text-slate-300'
-              }`}>
-                选择{plan.title}
-              </div>
-            </button>
-          ))}
-        </div>
+        <ChannelPlanSelector
+          liveRooms={liveRooms}
+          activeRoom={activeRoom}
+          selectedRoomId={selectedRoomId}
+          setSelectedRoomId={setSelectedRoomId}
+          planOptions={roomPlanOptions}
+          selectedPlan={selectedPlan}
+          setSelectedPlan={setSelectedPlan}
+        />
       )}
 
       <GlassCard className="p-5">
@@ -793,6 +733,115 @@ function PlanCanvas({
   );
 }
 
+function ChannelPlanSelector({
+  liveRooms = [],
+  activeRoom,
+  selectedRoomId,
+  setSelectedRoomId,
+  planOptions = [],
+  selectedPlan,
+  setSelectedPlan,
+}) {
+  return (
+    <GlassCard className="p-4">
+      <div className="grid gap-4 md:grid-cols-[240px_minmax(0,1fr)]">
+        <div>
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-violet-300">
+            <Film className="h-3.5 w-3.5" />
+            渠道 / 直播间
+          </div>
+          <div className="space-y-2">
+            {liveRooms.map((room) => {
+              const active = room.id === selectedRoomId;
+              return (
+                <button
+                  key={room.id}
+                  type="button"
+                  onClick={() => setSelectedRoomId(room.id)}
+                  className={`w-full rounded-lg border p-3 text-left transition ${
+                    active
+                      ? 'border-violet-500/60 bg-violet-500/10'
+                      : 'border-white/10 bg-white/[0.035] hover:border-violet-300/60 hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`h-2 w-2 rounded-full ${active ? 'bg-violet-500' : 'bg-slate-300'}`} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-semibold text-white">{room.name}</span>
+                    {room.recommended && <span className="rounded-full bg-violet-500 px-2 py-0.5 text-[10px] font-bold text-white">推荐</span>}
+                  </div>
+                  <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500">
+                    <span className="truncate">{room.market}</span>
+                    <span>{room.status}</span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="min-w-0">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-xs font-semibold text-violet-300">模式方案</div>
+              <div className="mt-1 truncate text-base font-semibold text-white">{activeRoom?.name || '请选择直播间'}</div>
+            </div>
+            {activeRoom && (
+              <span className="rounded-full bg-white/5 px-3 py-1 text-xs font-semibold text-slate-500">
+                {activeRoom.channel}
+              </span>
+            )}
+          </div>
+
+          {activeRoom && (
+            <div className="mb-4 grid gap-3 text-xs md:grid-cols-3">
+              <div className="rounded-lg bg-white/5 p-3">
+                <div className="text-slate-500">预算建议</div>
+                <div className="mt-1 font-semibold text-white">{formatMoney(activeRoom.budget)}</div>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <div className="text-slate-500">预估 ROAS</div>
+                <div className="mt-1 font-semibold text-emerald-300">{activeRoom.roas}</div>
+              </div>
+              <div className="rounded-lg bg-white/5 p-3">
+                <div className="text-slate-500">角色</div>
+                <div className="mt-1 truncate font-semibold text-white">{activeRoom.role}</div>
+              </div>
+            </div>
+          )}
+
+          {planOptions.length > 0 && (
+            <div className="grid gap-3 xl:grid-cols-3">
+              {planOptions.map((plan) => (
+                <button
+                  key={plan.id}
+                  type="button"
+                  onClick={() => setSelectedPlan(plan.id)}
+                  className={`relative rounded-lg border p-4 text-left transition ${
+                    selectedPlan === plan.id
+                      ? 'border-violet-500/70 bg-gradient-to-b from-violet-500/20 to-white/[0.025]'
+                      : 'border-white/10 bg-white/[0.035] hover:border-white/20'
+                  }`}
+                >
+                  {plan.recommended && <span className="absolute -top-2 right-3 rounded-full bg-violet-500 px-2 py-1 text-[10px] font-bold text-white">推荐</span>}
+                  <div className="text-lg font-semibold text-white">{plan.title}</div>
+                  <div className="mt-3 space-y-2 text-sm text-slate-400">
+                    {plan.lines.map((line) => <div key={line}>· {line}</div>)}
+                  </div>
+                  <div className={`mt-4 flex h-9 items-center justify-center rounded-lg text-sm font-semibold ${
+                    selectedPlan === plan.id ? 'bg-violet-500 text-white' : 'bg-white/5 text-slate-300'
+                  }`}>
+                    选择{plan.title}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
 const liveLoopStepFallback = [
   { id: 'signal', agent: '经营信号', status: 'idle', summary: '等待下一轮经营信号采集。' },
   { id: 'analysis', agent: '效果分析', status: 'idle', summary: '等待识别变化并归因。' },
@@ -824,8 +873,6 @@ function loopStepClasses(status) {
 function LiveLoopPanel({
   liveLoop = agentModeFallback.live_loop,
   currentLiveFrame,
-  liveDemoPlaying,
-  onPauseLiveDemo,
   acknowledgedAlerts = {},
   onAcknowledgeAlert,
 }) {
@@ -836,7 +883,6 @@ function LiveLoopPanel({
       : liveLoopStepFallback;
   const activeAlert = (currentLiveFrame?.alerts || []).find((alert) => !acknowledgedAlerts[alert.id]);
   const verification = liveLoop?.verification;
-  const statusLabel = activeAlert ? '自动预警' : currentLiveFrame?.state_label || loopStatusText(liveLoop?.status);
 
   return (
     <GlassCard className="p-5">
@@ -847,19 +893,6 @@ function LiveLoopPanel({
             持续策略与执行闭环
           </div>
           <p className="mt-1 text-xs text-slate-500">效果变化识别 → 策略生成 → 护栏校验 → 执行/审批 → 验证回写</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-300">
-            {statusLabel}
-          </span>
-          <button
-            type="button"
-            onClick={onPauseLiveDemo}
-            className="flex h-9 items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-500/20"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 ${liveDemoPlaying ? 'animate-spin' : ''}`} />
-            {liveDemoPlaying ? '持续自动巡检' : '已暂停巡检'}
-          </button>
         </div>
       </div>
 
@@ -938,9 +971,6 @@ function LiveCanvas({
   liveDemoEvents = [],
   liveDemoPlaying,
   onToggleLiveDemo,
-  onPauseLiveDemo,
-  onTakeOverLiveDemo,
-  manualTakeover,
   acknowledgedAlerts,
   onAcknowledgeAlert,
 }) {
@@ -978,17 +1008,6 @@ function LiveCanvas({
             {liveDemoPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {liveDemoPlaying ? '直播中' : '已暂停'} {currentLiveFrame?.elapsed || '00:00:00'}
           </button>
-          <button
-            type="button"
-            onClick={onTakeOverLiveDemo}
-            className={`h-9 rounded-lg border px-3 text-xs font-semibold ${
-              manualTakeover
-                ? 'border-blue-500/40 bg-blue-500/10 text-blue-700'
-                : 'border-white/10 bg-white/5 text-slate-300'
-            }`}
-          >
-            {manualTakeover ? '人工接管中' : '人工接管'}
-          </button>
         </div>
       </div>
 
@@ -999,15 +1018,6 @@ function LiveCanvas({
         <MetricPill label="CPA" value={liveCpa ? formatMoney(liveCpa) : '$0'} delta={liveCpa && liveCpa <= 9 ? '健康' : '关注'} tone={liveCpa && liveCpa <= 9 ? 'emerald' : 'amber'} icon={Target} />
         <MetricPill label="库存" value={`${liveInventory || 0} 件`} delta={liveInventory > 850 ? '安全' : '紧张'} tone={liveInventory > 850 ? 'emerald' : 'amber'} icon={Database} />
       </div>
-
-      <LiveLoopPanel
-        liveLoop={liveLoop}
-        currentLiveFrame={currentLiveFrame}
-        liveDemoPlaying={liveDemoPlaying}
-        onPauseLiveDemo={onPauseLiveDemo}
-        acknowledgedAlerts={acknowledgedAlerts}
-        onAcknowledgeAlert={onAcknowledgeAlert}
-      />
 
       <GlassCard className="p-5">
         <div className="mb-4 flex items-center gap-2 text-sm font-semibold text-white">
@@ -1053,6 +1063,13 @@ function LiveCanvas({
           </div>
         </div>
       </GlassCard>
+
+      <LiveLoopPanel
+        liveLoop={liveLoop}
+        currentLiveFrame={currentLiveFrame}
+        acknowledgedAlerts={acknowledgedAlerts}
+        onAcknowledgeAlert={onAcknowledgeAlert}
+      />
 
       <div className="grid grid-cols-2 gap-4">
         <GlassCard className="p-5">
@@ -1425,7 +1442,6 @@ function MainCanvas(props) {
             onStartManagedDelivery={props.onStartManagedDelivery}
             liveRooms={props.liveRooms}
             planOptions={props.planOptions}
-            planVersions={props.planVersions}
             disabledActions={props.disabledActions}
             phase={props.phase}
             briefFields={props.briefFields}
@@ -1441,9 +1457,6 @@ function MainCanvas(props) {
             liveDemoEvents={props.liveDemoEvents}
             liveDemoPlaying={props.liveDemoPlaying}
             onToggleLiveDemo={props.onToggleLiveDemo}
-            onPauseLiveDemo={props.onPauseLiveDemo}
-            onTakeOverLiveDemo={props.onTakeOverLiveDemo}
-            manualTakeover={props.manualTakeover}
             acknowledgedAlerts={props.acknowledgedAlerts}
             onAcknowledgeAlert={props.onAcknowledgeAlert}
           />
@@ -1788,12 +1801,12 @@ export default function AgentModePage() {
   const [accessOpen, setAccessOpen] = useState(false);
   const [liveDemoIndex, setLiveDemoIndex] = useState(0);
   const [liveDemoPlaying, setLiveDemoPlaying] = useState(true);
-  const [manualTakeover, setManualTakeover] = useState(false);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState({});
   const [chatMessages, setChatMessages] = useState([
     { id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome },
   ]);
   const chatEndRef = useRef(null);
+  const approvalPauseRef = useRef(false);
 
   const goal = wb.project;
   const selectedRoomId = wb.selected_room_id;
@@ -1854,7 +1867,6 @@ export default function AgentModePage() {
 
   const currentLiveRooms = wb.live_rooms || [];
   const currentPlanOptions = wb.plan_options || [];
-  const currentPlanVersions = wb.plan_versions?.length ? wb.plan_versions : agentModeFallback.plan_versions;
   const currentProcessSteps = wb.process_steps?.length ? wb.process_steps : agentModeFallback.process_steps;
   const currentLeadRows = wb.lead_rows?.length ? wb.lead_rows : agentModeFallback.lead_rows;
   const currentFallbackCampaigns = wb.fallback_campaigns?.length ? wb.fallback_campaigns : agentModeFallback.fallback_campaigns;
@@ -1865,15 +1877,27 @@ export default function AgentModePage() {
   const currentStrategyNotes = wb.strategy_notes?.length ? wb.strategy_notes : agentModeFallback.strategy_notes;
   const currentDisabledActions = wb.disabled_actions?.length ? wb.disabled_actions : agentModeFallback.disabled_actions;
   const currentBudgetProjects = wb.budget_projects?.length ? wb.budget_projects : agentModeFallback.budget_projects;
+  const currentAgentRoster = wb.agent_roster?.length ? wb.agent_roster : agentModeFallback.agent_roster;
   const activeBudgetProjectId = wb.active_project_id || null;
   const currentLiveDemo = wb.live_demo?.frames?.length ? wb.live_demo : agentModeFallback.live_demo;
   const liveDemoFrames = currentLiveDemo.frames || [];
   const liveDemoInterval = currentLiveDemo.tick_interval_ms || 1800;
   const currentLiveFrame = liveDemoFrames[liveDemoIndex] || liveDemoFrames[0] || null;
+  const currentActiveAlert = useMemo(
+    () => (currentLiveFrame?.alerts || []).find((alert) => !acknowledgedAlerts[alert.id]) || null,
+    [currentLiveFrame, acknowledgedAlerts],
+  );
   const liveDemoEvents = useMemo(
     () => liveDemoFrames.slice(0, liveDemoIndex + 1).flatMap((frame) => frame.events || []).slice(-8),
     [liveDemoFrames, liveDemoIndex],
   );
+
+  useEffect(() => {
+    if (activeStage === 'live' && liveDemoPlaying && currentActiveAlert) {
+      approvalPauseRef.current = true;
+      setLiveDemoPlaying(false);
+    }
+  }, [activeStage, liveDemoPlaying, currentActiveAlert]);
 
   useEffect(() => {
     if (activeStage !== 'live' || !liveDemoPlaying || liveDemoFrames.length <= 1) return undefined;
@@ -1917,12 +1941,14 @@ export default function AgentModePage() {
       const response = await api.resetWorkbench();
       dispatch({ type: 'INIT', workbench: response.workbench });
       setActiveStage('plan');
+      approvalPauseRef.current = false;
       setChatMessages([
         { id: 'welcome', role: 'assistant', content: response.workbench.chat_welcome || agentModeFallback.chat_welcome },
       ]);
     } catch {
       dispatch({ type: 'RESET' });
       setActiveStage('plan');
+      approvalPauseRef.current = false;
       setChatMessages([
         { id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome },
       ]);
@@ -1936,7 +1962,7 @@ export default function AgentModePage() {
     dispatch({ type: 'SELECT_BUDGET_PROJECT', projectId });
     setLiveDemoIndex(0);
     setLiveDemoPlaying(false);
-    setManualTakeover(false);
+    approvalPauseRef.current = false;
     setAcknowledgedAlerts({});
     setActiveStage(selectedProject.workbench?.phase === 'review' ? 'review' : 'plan');
     setChatMessages([
@@ -1946,6 +1972,15 @@ export default function AgentModePage() {
         content: `已切换到历史预算项目「${selectedProject.name}」。你可以查看方案、直播托管过程和复盘数据。`,
       },
     ]);
+
+    api.getAgentModeWorkbench(projectId)
+      .then((response) => {
+        if (response?.active_project_id === projectId) {
+          dispatch({ type: 'INIT', workbench: response });
+          setActiveStage(response.phase === 'review' ? 'review' : 'plan');
+        }
+      })
+      .catch(() => {});
 
     api.updateAgentModeWorkbench({
       ...(selectedProject.workbench || {}),
@@ -2063,22 +2098,16 @@ export default function AgentModePage() {
   };
 
   const onToggleLiveDemo = useCallback(() => {
-    setManualTakeover(false);
     setLiveDemoPlaying((current) => !current);
-  }, []);
-
-  const onPauseLiveDemo = useCallback(() => {
-    setLiveDemoPlaying(false);
-  }, []);
-
-  const onTakeOverLiveDemo = useCallback(() => {
-    setManualTakeover(true);
-    setLiveDemoPlaying(false);
   }, []);
 
   const onAcknowledgeAlert = useCallback((alertId, action) => {
     if (!alertId) return;
     setAcknowledgedAlerts((current) => ({ ...current, [alertId]: action || true }));
+    if (approvalPauseRef.current && activeStage === 'live') {
+      approvalPauseRef.current = false;
+      setLiveDemoPlaying(true);
+    }
     setChatMessages((current) => [
       ...current,
       {
@@ -2087,7 +2116,7 @@ export default function AgentModePage() {
         content: `已记录你的选择：${action}。系统会继续按直播实时数据推进预算托管。`,
       },
     ]);
-  }, []);
+  }, [activeStage]);
 
   const canvasProps = {
     activeStage,
@@ -2106,7 +2135,6 @@ export default function AgentModePage() {
     onStartManagedDelivery,
     liveRooms: currentLiveRooms,
     planOptions: currentPlanOptions,
-    planVersions: currentPlanVersions,
     processSteps: currentProcessSteps,
     leadRows: currentLeadRows,
     fallbackCampaigns: currentFallbackCampaigns,
@@ -2120,9 +2148,6 @@ export default function AgentModePage() {
     liveDemoEvents,
     liveDemoPlaying,
     onToggleLiveDemo,
-    onPauseLiveDemo,
-    onTakeOverLiveDemo,
-    manualTakeover,
     acknowledgedAlerts,
     onAcknowledgeAlert,
     metrics,
@@ -2153,6 +2178,7 @@ export default function AgentModePage() {
             leftPanelWidth={leftPanelWidth}
             onResizePointerDown={createResizePointerDown('left')}
             onReset={onReset}
+            agentRoster={currentAgentRoster}
             budgetProjects={currentBudgetProjects}
             activeBudgetProjectId={activeBudgetProjectId}
             onSelectBudgetProject={onSelectBudgetProject}

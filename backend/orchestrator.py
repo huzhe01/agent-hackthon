@@ -21,12 +21,16 @@ try:
         patch_workbench,
         read_workbench,
     )
+    from agent_mode_repository import create_agent_mode_repository
+    from agent_mode_simulator import build_simulation_bundle, validate_simulation_brief
 except ImportError:
     from backend.agent_mode_store import (
         get_brief_completion,
         patch_workbench,
         read_workbench,
     )
+    from backend.agent_mode_repository import create_agent_mode_repository
+    from backend.agent_mode_simulator import build_simulation_bundle, validate_simulation_brief
 
 # ---------------------------------------------------------------------------
 # LLM config (reuse from api.py pattern)
@@ -334,7 +338,7 @@ def _handle_extract_brief(arguments: Dict[str, Any]) -> tuple[Dict, list]:
 
 
 def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
-    """Generate 3 plans (mock). Returns (tool_result, sse_events)."""
+    """Generate 3 plans and attach a persisted simulation snapshot when possible."""
     events = []
     wb = read_workbench()
     brief = wb.get("brief_fields", {})
@@ -412,6 +416,24 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
         target_roas=target_roas,
         meta_cap=meta_cap,
     )
+    simulator_brief = {
+        "budget": budget,
+        "target_roas": target_roas,
+        "channels": channels,
+        "products": products,
+        "market": market,
+        "inventory": inventory,
+        "margin": margin,
+        "live_window": live_window,
+        "constraints": brief.get("constraints"),
+    }
+    simulator_status = validate_simulation_brief(simulator_brief)
+    simulation_bundle = None
+    if simulator_status["complete"]:
+        version_number = len(plan_versions)
+        simulation_bundle = build_simulation_bundle(simulator_brief, version_number=version_number)
+        simulation_bundle["plan_options"] = plan_options
+        simulation_bundle["live_rooms"] = live_rooms
 
     wb_patch = {
         "phase": "planning",
@@ -423,6 +445,27 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
             "name": f"{products} · {market.split('/')[0].strip()}直播",
         },
     }
+    if simulation_bundle:
+        wb_patch.update({
+            "product_catalog": simulation_bundle.get("product_catalog", []),
+            "live_demo": simulation_bundle.get("live_demo"),
+            "managed_events": simulation_bundle.get("managed_events", []),
+            "lead_rows": simulation_bundle.get("lead_rows", []),
+            "review_benchmarks": simulation_bundle.get("review_benchmarks", []),
+            "review_actions": simulation_bundle.get("review_actions", []),
+            "strategy_notes": simulation_bundle.get("strategy_notes", []),
+            "api_trace": simulation_bundle.get("review", {}).get("api_trace", []),
+            "fallback_campaigns": simulation_bundle.get("fallback_campaigns", []),
+        })
+
+        repository = create_agent_mode_repository()
+        if repository.enabled:
+            try:
+                saved = repository.save_generated_plan(simulator_brief, simulation_bundle)
+                persisted = repository.build_workbench(project_id=saved["project"]["id"])
+                wb_patch.update(persisted)
+            except Exception as exc:
+                wb_patch["persistence_warning"] = f"Supabase 持久化失败：{exc}"
     patch_workbench(wb_patch)
 
     events.append({"type": "workbench_patch", "patch": wb_patch})
@@ -441,6 +484,7 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
         "success": True,
         "plans_count": 3,
         "message": "三套方案已生成。请向用户展示方案概要，并询问选择哪套或是否需要调整。",
+        "persisted": bool(simulation_bundle),
     }, events
 
 

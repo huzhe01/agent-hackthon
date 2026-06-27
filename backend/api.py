@@ -30,9 +30,11 @@ from dotenv import load_dotenv
 
 try:
     from agent_mode_store import read_workbench, write_workbench, reset_workbench
+    from agent_mode_repository import create_agent_mode_repository
     from orchestrator import orchestrator_chat
 except ImportError:  # pragma: no cover - used by tests importing backend.api as a package
     from backend.agent_mode_store import read_workbench, write_workbench, reset_workbench
+    from backend.agent_mode_repository import create_agent_mode_repository
     from backend.orchestrator import orchestrator_chat
 
 load_dotenv()
@@ -1228,13 +1230,14 @@ async def ai_chat(message: str = Query(..., min_length=1)):
 
 
 @app.get("/api/agent-mode/workbench", tags=["Agent Mode"])
-def get_agent_mode_workbench():
-    """Read the Agent Mode workbench data boundary.
-
-    The current implementation returns an in-memory seed store. This endpoint is
-    intentionally shaped like the future database-backed contract so the frontend
-    is not coupled to JSX literals.
-    """
+def get_agent_mode_workbench(project_id: Optional[str] = None):
+    """Read the Agent Mode workbench data boundary."""
+    repository = create_agent_mode_repository()
+    if repository.enabled:
+        try:
+            return repository.build_workbench(project_id=project_id)
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Agent Mode persistence error: {exc}") from exc
     return read_workbench()
 
 

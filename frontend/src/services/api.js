@@ -112,8 +112,9 @@ export async function getMetricsTrend(hours = 24) {
 /**
  * 获取 Agent Mode 直播托管工作台数据
  */
-export async function getAgentModeWorkbench() {
-    return request('/api/agent-mode/workbench');
+export async function getAgentModeWorkbench(projectId) {
+    const queryString = projectId ? `?${new URLSearchParams({ project_id: projectId }).toString()}` : '';
+    return request(`/api/agent-mode/workbench${queryString}`);
 }
 
 /**
