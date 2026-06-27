@@ -667,21 +667,6 @@ function PlanCanvas({
         <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
       </div>
 
-      <GlassCard className="p-4">
-        <div className="mb-3 flex items-center gap-2 text-xs font-semibold text-violet-300">
-          <Target className="h-3.5 w-3.5" />
-          项目摘要
-        </div>
-        <div className="flex flex-wrap gap-3 text-xs">
-          {goal.product && <span className="rounded-lg bg-white/5 px-3 py-1.5 text-slate-200">{goal.product}</span>}
-          {goal.market && <span className="rounded-lg bg-white/5 px-3 py-1.5 text-slate-200">{goal.market}</span>}
-          {goal.totalBudget && <span className="rounded-lg bg-white/5 px-3 py-1.5 text-slate-200">预算 {goal.totalBudget}</span>}
-          {goal.targetRoas && <span className="rounded-lg bg-white/5 px-3 py-1.5 text-slate-200">ROAS {goal.targetRoas}</span>}
-          {goal.channels && <span className="rounded-lg bg-white/5 px-3 py-1.5 text-slate-200">{goal.channels}</span>}
-          {goal.liveWindow && <span className="rounded-lg bg-white/5 px-3 py-1.5 text-slate-200">{goal.liveWindow}</span>}
-        </div>
-      </GlassCard>
-
       {liveRooms.length > 0 && (
         <ChannelPlanSelector
           liveRooms={liveRooms}

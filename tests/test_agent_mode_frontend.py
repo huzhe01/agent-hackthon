@@ -160,6 +160,7 @@ class AgentModeFrontendTest(unittest.TestCase):
 
         self.assertNotIn("<LiveRoomCard", plan_canvas_source)
         self.assertNotIn("grid grid-cols-3 gap-4", plan_canvas_source)
+        self.assertNotIn("项目摘要", plan_canvas_source)
 
     def test_agent_mode_plan_versions_are_kept_in_data_but_hidden_from_canvas(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
