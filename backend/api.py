@@ -32,10 +32,12 @@ try:
     from agent_mode_store import read_workbench, write_workbench, reset_workbench
     from agent_mode_repository import create_agent_mode_repository
     from orchestrator import orchestrator_chat
+    from agent.registry import dispatch_agent_tool, get_agent_tool_schemas
 except ImportError:  # pragma: no cover - used by tests importing backend.api as a package
     from backend.agent_mode_store import read_workbench, write_workbench, reset_workbench
     from backend.agent_mode_repository import create_agent_mode_repository
     from backend.orchestrator import orchestrator_chat
+    from backend.agent.registry import dispatch_agent_tool, get_agent_tool_schemas
 
 load_dotenv()
 
@@ -330,6 +332,7 @@ AGENT_SYSTEM_PROMPT = """你是 MaiStream 出海直播电商投放助手「智�
 - get_product_ads: 获取直播间商品投放列表
 - get_creative_library: 获取素材库与素材疲劳度
 - search_business_clues: 使用小宿/Cloudsway Search 搜索外部经营线索
+- estimate_ad_performance / allocate_budget / simulate_live_workbench / query_backend_database / generate_marketing_content / inspect_media_api / refresh_business_knowledge: 使用 MaiDeal agent 工具层完成预估、预算分配、数据查询、内容生成、媒体 API 情报、知识检索和无真实数据模拟
 - create_campaign_preview: 创建广告计划预览（用户需确认后才会真正创建）
 
 回答时请：
@@ -465,6 +468,8 @@ ACTION_TOOLS = [
         }
     }
 ]
+
+ACTION_TOOLS = ACTION_TOOLS + get_agent_tool_schemas()
 
 
 def build_agent_tools(enabled_data_sources: Optional[List[str]] = None) -> List[Dict[str, Any]]:
@@ -1404,6 +1409,10 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, 
             "data": preview,
             "message": "计划预览已生成，等待用户确认创建"
         }
+
+    registry_result = dispatch_agent_tool(tool_name, arguments)
+    if registry_result.get("success") or not registry_result.get("error", "").startswith("未知 agent 工具"):
+        return registry_result
 
     return {"success": False, "error": f"未知工具: {tool_name}"}
 

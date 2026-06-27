@@ -23,6 +23,7 @@ try:
     )
     from agent_mode_repository import create_agent_mode_repository
     from agent_mode_simulator import build_simulation_bundle, validate_simulation_brief
+    from agent.registry import build_tool_prompt, dispatch_agent_tool, get_agent_tool_schemas
 except ImportError:
     from backend.agent_mode_store import (
         get_brief_completion,
@@ -31,6 +32,7 @@ except ImportError:
     )
     from backend.agent_mode_repository import create_agent_mode_repository
     from backend.agent_mode_simulator import build_simulation_bundle, validate_simulation_brief
+    from backend.agent.registry import build_tool_prompt, dispatch_agent_tool, get_agent_tool_schemas
 
 # ---------------------------------------------------------------------------
 # LLM config (reuse from api.py pattern)
@@ -94,6 +96,8 @@ ORCHESTRATOR_SYSTEM_PROMPT = """你是 MaiDeal 出海直播投放调度中心。
 - 简洁专业，不要冗长
 - 提取到信息后用简短确认（如"✓ 已记录预算 $5,000 和目标 ROAS 3.0"）
 - 追问时一次不超过 2-3 个字段，优先问最关键的"""
+
+ORCHESTRATOR_SYSTEM_PROMPT = ORCHESTRATOR_SYSTEM_PROMPT + "\n\n" + build_tool_prompt()
 
 
 # ---------------------------------------------------------------------------
@@ -250,6 +254,8 @@ ORCHESTRATOR_TOOLS = [
         },
     },
 ]
+
+ORCHESTRATOR_TOOLS = ORCHESTRATOR_TOOLS + get_agent_tool_schemas()
 
 
 # ---------------------------------------------------------------------------
@@ -774,6 +780,28 @@ TOOL_HANDLERS = {
     "approve_live_action": _handle_approve_live_action,
     "reject_live_action": _handle_reject_live_action,
 }
+
+
+def _handle_registered_agent_tool(arguments: Dict[str, Any], tool_name: str) -> tuple[Dict, list]:
+    result = dispatch_agent_tool(tool_name, arguments)
+    events = []
+    if result.get("success"):
+        events.append({
+            "type": "agent_action",
+            "event": {
+                "role": "tool",
+                "content": f"{tool_name} 已返回结果，可用于当前投放决策。",
+                "agent": "tooluse",
+            },
+        })
+    return result, events
+
+
+for _agent_tool_schema in get_agent_tool_schemas():
+    _agent_tool_name = _agent_tool_schema["function"]["name"]
+    TOOL_HANDLERS[_agent_tool_name] = (
+        lambda arguments, tool_name=_agent_tool_name: _handle_registered_agent_tool(arguments, tool_name)
+    )
 
 
 # ---------------------------------------------------------------------------
