@@ -28,9 +28,9 @@ class AgentModeFrontendTest(unittest.TestCase):
 
         for required_text in [
             "MaiDeal工作台",
-            "方案规划",
-            "直播托管",
-            "复盘迭代",
+            "投放方案",
+            "在线看板",
+            "盘后迭代",
             "数据资产",
             "便携榨汁杯",
             "托管顾问",
@@ -40,7 +40,10 @@ class AgentModeFrontendTest(unittest.TestCase):
 
         self.assertNotIn("MaiDeal 直播后台", page_source)
         self.assertNotIn("MaiDeal工作台 ·", page_source)
+        self.assertNotIn("直播后台</div>", page_source)
         self.assertNotIn("广告主预算全托管 · 直播间投流工作台", page_source)
+        for retired_stage_label in ["方案规划", "直播托管", "复盘迭代"]:
+            self.assertNotIn(f"label: '{retired_stage_label}'", page_source)
 
     def test_agent_mode_page_uses_existing_agent_and_metrics_apis(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
@@ -280,19 +283,30 @@ class AgentModeFrontendTest(unittest.TestCase):
         for required_marker in [
             "数据资产",
             "线索资产",
-            "本场复盘报告",
-            "API 调用链",
             "/api/agent-mode/workbench",
             "/api/metrics/realtime",
             "/api/metrics/trend?hours=24",
             "/api/campaigns",
             "/api/orchestrator/chat",
-            "showReviewReport",
+            "reviewReportStreaming",
+            "generateReviewReport",
+            "api.chatWithOrchestrator",
+            "onMessage: (chunk)",
         ]:
             self.assertIn(required_marker, page_source)
 
+        self.assertNotIn("function ReviewReportCard", page_source)
         self.assertNotIn("{ id: 'leads'", page_source)
         self.assertNotIn("props.activeStage === 'leads'", page_source)
+
+    def test_agent_mode_canvas_header_removed_and_focus_lives_in_stage_panels(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        self.assertNotIn("function CanvasHeader", page_source)
+        self.assertNotIn("工作画布</span>", page_source)
+        self.assertNotIn("<CanvasHeader", page_source)
+        self.assertIn("FocusModeButton", page_source)
+        self.assertIn("专注模式", page_source)
 
     def test_agent_mode_defaults_to_light_theme_with_manual_theme_switch(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
@@ -306,7 +320,6 @@ class AgentModeFrontendTest(unittest.TestCase):
             "切换为深色主题",
             "浅色",
             "深色",
-            "直播后台",
             "托管顾问",
         ]:
             self.assertIn(ui_marker, page_source)

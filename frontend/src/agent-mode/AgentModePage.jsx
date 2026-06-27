@@ -42,9 +42,9 @@ import * as api from '../services/api';
 import { agentModeFallback, fallbackDataSources, fallbackModels } from './agentModeDefaults';
 
 const stageTabs = [
-  { id: 'plan', label: '方案规划', icon: Target },
-  { id: 'live', label: '直播托管', icon: Activity },
-  { id: 'review', label: '复盘迭代', icon: GitCompare },
+  { id: 'plan', label: '投放方案', icon: Target },
+  { id: 'live', label: '在线看板', icon: Activity },
+  { id: 'review', label: '盘后迭代', icon: GitCompare },
 ];
 
 function formatMoney(value, currency = '$') {
@@ -218,6 +218,20 @@ function GlassCard({ children, className = '' }) {
   );
 }
 
+function FocusModeButton({ focusMode, onToggleFocus }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggleFocus}
+      className="flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-300 hover:bg-white/10"
+      aria-label={focusMode ? '退出专注模式' : '进入专注模式'}
+    >
+      <ChevronsLeftRight className="h-4 w-4" />
+      {focusMode ? '退出专注' : '专注模式'}
+    </button>
+  );
+}
+
 function StageTabs({ activeStage, setActiveStage }) {
   return (
     <nav className="flex items-center gap-1 rounded-lg bg-white/5 p-1">
@@ -247,7 +261,6 @@ function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, s
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-base font-black text-white">麦</div>
         <div className="min-w-0">
           <div className="truncate text-base font-semibold text-white">MaiDeal工作台</div>
-          <div className="truncate text-xs text-slate-500">直播后台</div>
         </div>
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </div>
@@ -546,7 +559,7 @@ function ProcessSteps({ descriptions = [] }) {
   );
 }
 
-function BriefingCanvas({ briefFields = {} }) {
+function BriefingCanvas({ briefFields = {}, focusMode, onToggleFocus }) {
   const fields = Object.entries(BRIEF_FIELD_LABELS);
   const coreSet = new Set(BRIEF_CORE_FIELDS);
   const filledCore = BRIEF_CORE_FIELDS.filter((k) => briefFields[k] != null).length;
@@ -554,11 +567,16 @@ function BriefingCanvas({ briefFields = {} }) {
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold text-white">项目 Brief</h1>
-        <p className="mt-2 text-sm text-slate-500">
-          请在右侧对话框描述您的经营目标，MaiDeal 将自动提取关键字段 ·
-          核心字段收集完成后自动生成三套投放方案
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">项目 Brief</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              请在右侧对话框描述您的经营目标，MaiDeal 将自动提取关键字段 ·
+              核心字段收集完成后自动生成三套投放方案
+            </p>
+          </div>
+          <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
+        </div>
       </div>
 
       <GlassCard className="p-5">
@@ -630,9 +648,11 @@ function PlanCanvas({
   disabledActions = [],
   phase,
   briefFields,
+  focusMode,
+  onToggleFocus,
 }) {
   if (phase === 'briefing') {
-    return <BriefingCanvas briefFields={briefFields} />;
+    return <BriefingCanvas briefFields={briefFields} focusMode={focusMode} onToggleFocus={onToggleFocus} />;
   }
   const activeRoom = liveRooms.find((room) => room.id === selectedRoomId) || liveRooms.find((room) => room.recommended) || liveRooms[0] || null;
   const roomPlanOptions = activeRoom?.plan_options?.length ? activeRoom.plan_options : planOptions;
@@ -641,9 +661,10 @@ function PlanCanvas({
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <div className="flex items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold text-white">方案规划</h1>
+          <h1 className="text-2xl font-semibold text-white">投放方案</h1>
           <p className="mt-2 text-sm text-slate-500">规划模块输出 · 直播间矩阵预算拆分 · 当前推荐均衡方案</p>
         </div>
+        <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
       </div>
 
       <GlassCard className="p-4">
@@ -974,6 +995,8 @@ function LiveCanvas({
   onToggleLiveDemo,
   acknowledgedAlerts,
   onAcknowledgeAlert,
+  focusMode,
+  onToggleFocus,
 }) {
   const frameMetrics = currentLiveFrame?.metrics || {};
   const liveSpend = Number(frameMetrics.spend ?? usedBudget ?? 0);
@@ -995,7 +1018,7 @@ function LiveCanvas({
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
-      <div className="flex items-end justify-between">
+      <div className="flex items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-white">直播托管控制台</h1>
           <p className="mt-2 text-sm text-slate-500">投放执行中 · 数据按时间推进 · 预算不足或 ROI 异常自动预警</p>
@@ -1009,6 +1032,7 @@ function LiveCanvas({
             {liveDemoPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {liveDemoPlaying ? '直播中' : '已暂停'} {currentLiveFrame?.elapsed || '00:00:00'}
           </button>
+          <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
         </div>
       </div>
 
@@ -1187,8 +1211,21 @@ function LeadsCanvas({ leadRows = [] }) {
   );
 }
 
-function ReviewCanvas({ reviewBenchmarks = [], reviewActions = [], strategyNotes = [], leadRows = [] }) {
-  const [showReviewReport, setShowReviewReport] = useState(false);
+function ReviewCanvas({
+  reviewBenchmarks = [],
+  reviewActions = [],
+  strategyNotes = [],
+  leadRows = [],
+  goal = {},
+  totalBudget = 0,
+  usedBudget = 0,
+  currentLiveFrame,
+  focusMode,
+  onToggleFocus,
+}) {
+  const [reviewReportText, setReviewReportText] = useState('');
+  const [reviewReportStreaming, setReviewReportStreaming] = useState(false);
+  const [reviewReportError, setReviewReportError] = useState('');
   const apiAudit = [
     { endpoint: '/api/agent-mode/workbench', usage: '读取 live_demo、线索资产、托管动作和复盘基线。' },
     { endpoint: '/api/metrics/realtime', usage: '读取实时消耗、GMV、ROI 与库存摘要。' },
@@ -1197,18 +1234,65 @@ function ReviewCanvas({ reviewBenchmarks = [], reviewActions = [], strategyNotes
     { endpoint: '/api/orchestrator/chat', usage: '触发方案生成、审批回写和下一场策略草案。' },
   ];
   const highIntentLeads = leadRows.filter((lead) => Number(lead.score || 0) >= 80);
+  const generateReviewReport = async () => {
+    if (reviewReportStreaming) return;
+    setReviewReportText('');
+    setReviewReportError('');
+    setReviewReportStreaming(true);
+
+    const reportContext = {
+      project: goal,
+      budget: { total: totalBudget, used: usedBudget },
+      final_frame: currentLiveFrame,
+      api_trace: apiAudit,
+      benchmarks: reviewBenchmarks,
+      key_actions: reviewActions,
+      strategy_notes: strategyNotes,
+      lead_assets: leadRows,
+    };
+    const prompt = [
+      '请生成一份面向广告主的盘后复盘报告，用中文输出。',
+      '报告必须覆盖：API 调用链、关键动作、策略更新、线索资产、相对固定预算的增量效果，以及下一场建议。',
+      '请避免营销口吻，直接说明数据证据、动作原因和可复用策略。',
+      `工作台数据：${JSON.stringify(reportContext)}`,
+    ].join('\n');
+
+    try {
+      await api.chatWithOrchestrator(
+        [{ role: 'user', content: prompt }],
+        {
+          onMessage: (chunk) => {
+            setReviewReportText((current) => `${current}${chunk}`);
+          },
+          onError: (error) => {
+            setReviewReportError(error || '复盘报告生成失败');
+            setReviewReportStreaming(false);
+          },
+          onDone: () => {
+            setReviewReportStreaming(false);
+          },
+        },
+      );
+    } catch (error) {
+      setReviewReportError(error?.message || '复盘报告生成失败');
+      setReviewReportStreaming(false);
+    }
+  };
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
       <div className="flex items-end justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-white">复盘迭代</h1>
+          <h1 className="text-2xl font-semibold text-white">盘后迭代</h1>
           <p className="mt-2 text-sm text-slate-500">复盘模块输出 · 数据资产归档 · 写入下一场策略记忆</p>
         </div>
-        <button type="button" className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-300">
-          <ClipboardCheck className="h-4 w-4" />
-          导出复盘
-        </button>
+        <div className="flex gap-2">
+          <button type="button" className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-slate-300">
+            <ClipboardCheck className="h-4 w-4" />
+            导出复盘
+          </button>
+          <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
+        </div>
       </div>
 
       <GlassCard className="p-5">
@@ -1320,82 +1404,39 @@ function ReviewCanvas({ reviewBenchmarks = [], reviewActions = [], strategyNotes
           </ul>
           <button
             type="button"
-            onClick={() => setShowReviewReport(true)}
-            className="mt-5 flex h-10 items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-sm font-semibold text-white"
+            onClick={generateReviewReport}
+            disabled={reviewReportStreaming}
+            className="mt-5 flex h-10 items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-70"
           >
-            <Wand2 className="h-4 w-4" />
-            基于本场生成下一场草案
+            {reviewReportStreaming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+            {reviewReportStreaming ? '正在生成复盘报告' : '基于本场生成下一场草案'}
           </button>
         </GlassCard>
       </div>
 
-      {showReviewReport && (
+      {(reviewReportStreaming || reviewReportText || reviewReportError) && (
         <GlassCard className="p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
               <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                <FileCheck2 className="h-4 w-4 text-emerald-300" />
-                本场复盘报告
+                {reviewReportStreaming ? <Loader2 className="h-4 w-4 animate-spin text-violet-300" /> : <FileCheck2 className="h-4 w-4 text-emerald-300" />}
+                AI 复盘报告
               </div>
-              <p className="mt-1 text-xs text-slate-500">报告汇总 API 调用链、关键动作、策略更新、线索资产和相对固定预算增量效果。</p>
+              <p className="mt-1 text-xs text-slate-500">通过 /api/orchestrator/chat 流式生成，数据来自当前预算项目、直播帧、动作和线索资产。</p>
             </div>
-            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700">可用于下一场草案</span>
+            <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-700">
+              {reviewReportStreaming ? '生成中' : '可用于下一场草案'}
+            </span>
           </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
-              <div className="mb-3 text-sm font-semibold text-white">API 调用链</div>
-              <div className="space-y-2">
-                {apiAudit.map((item) => (
-                  <div key={item.endpoint} className="rounded-lg bg-white/60 p-3 text-xs">
-                    <div className="font-mono font-semibold text-violet-700">{item.endpoint}</div>
-                    <div className="mt-1 leading-5 text-slate-600">{item.usage}</div>
-                  </div>
-                ))}
+          <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
+            {reviewReportError ? (
+              <div className="text-sm leading-6 text-rose-600">{reviewReportError}</div>
+            ) : (
+              <div className="whitespace-pre-wrap text-sm leading-7 text-slate-700">
+                {reviewReportText || '正在调用模型整理复盘报告...'}
+                {reviewReportStreaming && <span className="ml-1 inline-block h-4 w-1 animate-pulse rounded bg-violet-400 align-middle" />}
               </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
-              <div className="mb-3 text-sm font-semibold text-white">预算增量效果</div>
-              <div className="grid grid-cols-1 gap-2">
-                {reviewBenchmarks.map((benchmark) => (
-                  <div key={`report-${benchmark.title}`} className="rounded-lg bg-white/60 p-3 text-sm">
-                    <div className="text-xs text-slate-500">{benchmark.title}</div>
-                    <div className="mt-1 font-semibold text-slate-900">{benchmark.line1} · {benchmark.line2}</div>
-                    <div className={benchmark.highlight ? 'mt-1 text-xs font-semibold text-emerald-700' : 'mt-1 text-xs text-slate-500'}>{benchmark.line3}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
-              <div className="mb-3 text-sm font-semibold text-white">关键动作与策略更新</div>
-              <div className="space-y-2">
-                {reviewActions.map((item) => (
-                  <div key={`report-${item.time}-${item.action}`} className="grid grid-cols-[52px_1fr_72px] gap-2 rounded-lg bg-white/60 p-3 text-xs">
-                    <span className="text-slate-500">{item.time}</span>
-                    <span className="font-semibold text-slate-800">{item.action}</span>
-                    <span className={item.type === '审批' ? 'font-semibold text-amber-700' : 'font-semibold text-emerald-700'}>{item.result}</span>
-                  </div>
-                ))}
-              </div>
-              <ul className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
-                {strategyNotes.map((note) => <li key={`report-${note}`}>· {note}</li>)}
-              </ul>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-white/[0.035] p-4">
-              <div className="mb-3 text-sm font-semibold text-white">线索资产结论</div>
-              <p className="text-sm leading-6 text-slate-700">
-                本场共沉淀 {leadRows.length} 条线索，其中 {highIntentLeads.length} 条高意向线索。
-                Meta 线索质量更高，支持下一场默认偏配 Meta；TikTok 保留前段种草与互动采集。
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {highIntentLeads.map((lead) => (
-                  <span key={`chip-${lead.user}`} className="rounded-full bg-white/60 px-3 py-1 text-xs font-semibold text-slate-700">{lead.user} · {lead.score}</span>
-                ))}
-              </div>
-            </div>
+            )}
           </div>
         </GlassCard>
       )}
@@ -1403,31 +1444,9 @@ function ReviewCanvas({ reviewBenchmarks = [], reviewActions = [], strategyNotes
   );
 }
 
-function CanvasHeader({ stage, focusMode, onToggleFocus }) {
-  const current = stageTabs.find((tab) => tab.id === stage);
-  return (
-    <div className="flex h-14 items-center justify-between border-b border-white/10 bg-[#080d15] px-5">
-      <div className="flex items-center gap-2 text-sm font-semibold text-slate-300">
-        {current && <current.icon className="h-4 w-4 text-violet-300" />}
-        <span>{current?.label || '方案规划'} 工作画布</span>
-      </div>
-      <button
-        type="button"
-        onClick={onToggleFocus}
-        className="flex h-8 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-300 hover:bg-white/10"
-        aria-label={focusMode ? '退出专注模式' : '进入专注模式'}
-      >
-        <ChevronsLeftRight className="h-4 w-4" />
-        {focusMode ? '退出专注' : '专注模式'}
-      </button>
-    </div>
-  );
-}
-
 function MainCanvas(props) {
   return (
     <main className="flex min-w-0 flex-1 flex-col bg-[#070b13]">
-      <CanvasHeader stage={props.activeStage} focusMode={props.focusMode} onToggleFocus={props.onToggleFocus} />
       <section className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         {props.activeStage === 'plan' && (
           <PlanCanvas
@@ -1446,6 +1465,8 @@ function MainCanvas(props) {
             disabledActions={props.disabledActions}
             phase={props.phase}
             briefFields={props.briefFields}
+            focusMode={props.focusMode}
+            onToggleFocus={props.onToggleFocus}
           />
         )}
         {props.activeStage === 'live' && (
@@ -1460,6 +1481,8 @@ function MainCanvas(props) {
             onToggleLiveDemo={props.onToggleLiveDemo}
             acknowledgedAlerts={props.acknowledgedAlerts}
             onAcknowledgeAlert={props.onAcknowledgeAlert}
+            focusMode={props.focusMode}
+            onToggleFocus={props.onToggleFocus}
           />
         )}
         {props.activeStage === 'review' && (
@@ -1468,6 +1491,12 @@ function MainCanvas(props) {
             reviewActions={props.reviewActions}
             strategyNotes={props.strategyNotes}
             leadRows={props.leadRows}
+            goal={props.goal}
+            totalBudget={props.totalBudget}
+            usedBudget={props.usedBudget}
+            currentLiveFrame={props.currentLiveFrame}
+            focusMode={props.focusMode}
+            onToggleFocus={props.onToggleFocus}
           />
         )}
       </section>
