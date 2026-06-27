@@ -1,0 +1,54 @@
+# GrowEngine 智投星 Agent - 黑客松一键部署
+#
+# 使用方式：
+#   cp .env.hackathon.example .env.hackathon
+#   docker compose --env-file .env.hackathon -f docker-compose.hackathon.yml up -d --build
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: growengine-agent-backend
+    environment:
+      ENVIRONMENT: production
+      DEBUG: "false"
+      LLM_API_BASE: ${LLM_API_BASE:-https://680728.xyz/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen-max}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      XIAOSU_SEARCH_API_KEY: ${XIAOSU_SEARCH_API_KEY:-}
+      SKYROUTER_API_KEY: ${SKYROUTER_API_KEY:-}
+      AI_SANDBOX_API_KEY: ${AI_SANDBOX_API_KEY:-}
+    volumes:
+      - growengine-backend-data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - growengine-agent
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    container_name: growengine-agent-frontend
+    ports:
+      - "${APP_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - growengine-agent
+
+networks:
+  growengine-agent:
+    driver: bridge
+
+volumes:
+  growengine-backend-data:
