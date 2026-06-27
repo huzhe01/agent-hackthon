@@ -10,15 +10,15 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     container_name: growengine-agent-backend
+    env_file:
+      - .env.hackathon
     environment:
       ENVIRONMENT: production
       DEBUG: "false"
-      LLM_API_BASE: ${LLM_API_BASE:-https://680728.xyz/v1}
-      LLM_MODEL: ${LLM_MODEL:-qwen-max}
-      LLM_API_KEY: ${LLM_API_KEY:-}
-      XIAOSU_SEARCH_API_KEY: ${XIAOSU_SEARCH_API_KEY:-}
-      SKYROUTER_API_KEY: ${SKYROUTER_API_KEY:-}
-      AI_SANDBOX_API_KEY: ${AI_SANDBOX_API_KEY:-}
+      QIJI_BASE_URL: ${QIJI_BASE_URL:-https://api.openai-next.com/v1}
+      QIJI_MODEL: ${QIJI_MODEL:-gpt-5}
+      LLM_API_BASE: ${LLM_API_BASE:-https://api.openai-next.com/v1}
+      LLM_MODEL: ${LLM_MODEL:-gpt-5}
     volumes:
       - growengine-backend-data:/app/data
     restart: unless-stopped

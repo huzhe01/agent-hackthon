@@ -16,8 +16,9 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 import random
 import math
 import uuid
@@ -26,6 +27,13 @@ import httpx
 import asyncio
 import os
 from dotenv import load_dotenv
+
+try:
+    from agent_mode_store import read_workbench, write_workbench, reset_workbench
+    from orchestrator import orchestrator_chat
+except ImportError:  # pragma: no cover - used by tests importing backend.api as a package
+    from backend.agent_mode_store import read_workbench, write_workbench, reset_workbench
+    from backend.orchestrator import orchestrator_chat
 
 load_dotenv()
 
@@ -118,6 +126,9 @@ class AgentChatRequest(BaseModel):
     """Agent 对话请求"""
     messages: List[Dict[str, str]]
     enable_tools: bool = True
+    model: Optional[str] = None
+    models: Optional[List[str]] = None
+    enabled_data_sources: Optional[List[str]] = None
 
 class CampaignPreview(BaseModel):
     """AI 生成的计划预览"""
@@ -129,43 +140,293 @@ class CampaignPreview(BaseModel):
 
 # ==================== LLM Agent 配置 ====================
 
-LLM_CONFIG = {
-    "api_base": os.getenv("LLM_API_BASE", "https://680728.xyz/v1"),
-    "api_key": os.getenv("LLM_API_KEY", ""),
-    "model": os.getenv("LLM_MODEL", "qwen-max")
-}
+QIJI_DEFAULT_BASE_URL = "https://api.openai-next.com/v1"
+QIJI_DEFAULT_MODEL = "gpt-5"
+XIAOSU_SEARCH_DEFAULT_URL = "https://aisearchapi.cloudsway.net/api/search/smart"
 
-AGENT_SYSTEM_PROMPT = """你是 GrowEngine 广告投放平台的智能助手「智投星」。你可以帮助用户：
-1. 查询当前广告计划的数据和效果
+
+def get_qiji_config() -> Dict[str, str]:
+    """Read Qiji/OpenAI-compatible model configuration from env."""
+    return {
+        "api_base": os.getenv("QIJI_BASE_URL") or QIJI_DEFAULT_BASE_URL,
+        "api_key": os.getenv("QIJI_API_KEY") or os.getenv("LLM_API_KEY") or "",
+        "model": os.getenv("QIJI_MODEL") or QIJI_DEFAULT_MODEL,
+    }
+
+
+def get_xiaosu_search_config() -> Dict[str, str]:
+    """Read Xiaosu/Cloudsway SmartSearch configuration from env."""
+    return {
+        "api_base": os.getenv("CLOUDSWAY_SEARCH_URL") or XIAOSU_SEARCH_DEFAULT_URL,
+        "api_key": os.getenv("CLOUDSWAY_SEARCH_KEY") or os.getenv("XIAOSU_SEARCH_API_KEY") or "",
+    }
+
+
+LLM_CONFIG = get_qiji_config()
+
+AGENT_DATA_SOURCES = [
+    {
+        "id": "realtime_metrics",
+        "label": "实时数据",
+        "description": "GMV、消耗、ROI、CTR、CVR、活跃计划数",
+        "enabled_by_default": True,
+    },
+    {
+        "id": "trend_metrics",
+        "label": "趋势曲线",
+        "description": "消耗、GMV、ROAS 的小时级趋势",
+        "enabled_by_default": True,
+    },
+    {
+        "id": "campaigns",
+        "label": "投放计划",
+        "description": "计划状态、预算、出价、学习阶段和转化指标",
+        "enabled_by_default": True,
+    },
+    {
+        "id": "diagnosis",
+        "label": "智能诊断",
+        "description": "学习失败、ROI 风险、高潜力扩量建议",
+        "enabled_by_default": True,
+    },
+    {
+        "id": "product_ads",
+        "label": "商品投放",
+        "description": "直播间商品、库存、价格、佣金、投放表现",
+        "enabled_by_default": True,
+    },
+    {
+        "id": "creative_library",
+        "label": "素材库",
+        "description": "直播切片、短视频素材、疲劳度、CTR、状态",
+        "enabled_by_default": True,
+    },
+    {
+        "id": "business_clues",
+        "label": "经营线索",
+        "description": "调用小宿/Cloudsway Search 发现市场、竞品、达人和平台趋势",
+        "enabled_by_default": True,
+    },
+]
+
+
+def get_agent_data_sources() -> List[Dict[str, Any]]:
+    """Return data scopes that can be granted to the agent."""
+    return [dict(source) for source in AGENT_DATA_SOURCES]
+
+
+def _selected_source_ids(enabled_data_sources: Optional[List[str]]) -> Set[str]:
+    known_sources = {source["id"] for source in AGENT_DATA_SOURCES}
+    if not enabled_data_sources:
+        return known_sources
+    selected = set(enabled_data_sources)
+    return selected & known_sources
+
+
+TEXT_MODEL_PREFIXES = (
+    "gpt-",
+    "gpt",
+    "o1",
+    "o3",
+    "o4",
+    "claude",
+    "gemini",
+    "qwen",
+    "deepseek",
+    "glm",
+    "kimi",
+    "moonshot",
+    "llama",
+    "doubao",
+    "yi-",
+    "mistral",
+)
+
+NON_AGENT_MODEL_HINTS = (
+    "image",
+    "dall-e",
+    "flux",
+    "stable-diffusion",
+    "sd3",
+    "recraft",
+    "ideogram",
+    "whisper",
+    "tts",
+    "embedding",
+    "rerank",
+    "bge",
+    "clip",
+    "video",
+    "wan",
+)
+
+VERIFIED_QIJI_CHAT_MODELS = [
+    "gpt-5",
+    "gpt-5.5",
+    "gpt-5.5-openai-compact",
+    "gpt-5-mini",
+    "gpt-5-nano",
+    "qwen-max",
+    "deepseek-chat",
+]
+
+
+def _looks_like_agent_model(model_id: str) -> bool:
+    model_id_lower = model_id.lower()
+    if any(hint in model_id_lower for hint in NON_AGENT_MODEL_HINTS):
+        return False
+    return model_id_lower.startswith(TEXT_MODEL_PREFIXES)
+
+
+def get_agent_model_options(model_ids: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Return selectable chat models, keeping the verified default first."""
+    default_model = get_qiji_config()["model"] or QIJI_DEFAULT_MODEL
+    ordered_ids = [default_model]
+    if model_ids:
+        available_ids = set(model_ids)
+        ordered_ids.extend([
+            model_id
+            for model_id in VERIFIED_QIJI_CHAT_MODELS
+            if model_id in available_ids and model_id != default_model
+        ])
+        ordered_ids.extend(sorted(model_ids))
+    else:
+        ordered_ids.extend([
+            model_id
+            for model_id in VERIFIED_QIJI_CHAT_MODELS
+            if model_id != default_model
+        ])
+
+    options = []
+    seen = set()
+    for model_id in ordered_ids:
+        if not model_id or model_id in seen:
+            continue
+        if model_id != default_model and not _looks_like_agent_model(model_id):
+            continue
+        seen.add(model_id)
+        options.append({
+            "id": model_id,
+            "label": model_id,
+            "enabled_by_default": model_id == default_model,
+            "supports_tools": True,
+            "provider": "Qiji",
+        })
+
+    return options[:48]
+
+AGENT_SYSTEM_PROMPT = """你是 MaiStream 出海直播电商投放助手「智投星」。你服务 TikTok Shop / 海外直播间运营团队，可以帮助用户：
+1. 查询直播间投放、商品、素材和实时经营数据
 2. 分析投放问题并给出优化建议
-3. 根据用户需求创建新的广告计划
+3. 根据用户需求创建新的广告计划或动作预览
 
 你有以下工具可以使用：
+- get_realtime_metrics: 获取当前实时经营指标
+- get_metrics_trend: 获取小时级消耗与 GMV 趋势
 - get_campaigns: 获取当前所有广告计划数据
 - get_diagnosis: 获取智能诊断建议
+- get_product_ads: 获取直播间商品投放列表
+- get_creative_library: 获取素材库与素材疲劳度
+- search_business_clues: 使用小宿/Cloudsway Search 搜索外部经营线索
 - create_campaign_preview: 创建广告计划预览（用户需确认后才会真正创建）
 
 回答时请：
 - 使用中文回复
 - 简洁专业，直击要点
 - 如果需要创建计划，先调用 create_campaign_preview 生成预览
+- 不要声称已经执行调价、暂停或创建；必须等待用户确认
 - 数据展示时使用清晰的格式"""
 
-AGENT_TOOLS = [
-    {
+TOOL_BY_SOURCE = {
+    "realtime_metrics": {
+        "type": "function",
+        "function": {
+            "name": "get_realtime_metrics",
+            "description": "获取当前直播间投放实时指标，包括消耗、GMV、ROI、CTR、CVR、活跃计划数。当用户问现在表现、实时数据、今日概况时调用。"
+        },
+    },
+    "trend_metrics": {
+        "type": "function",
+        "function": {
+            "name": "get_metrics_trend",
+            "description": "获取消耗、GMV、ROAS 的小时级趋势数据。当用户问趋势、峰值、时段表现、投放节奏时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "hours": {
+                        "type": "integer",
+                        "description": "获取多少小时内的数据，默认24，范围1到168",
+                    }
+                },
+            },
+        },
+    },
+    "campaigns": {
         "type": "function",
         "function": {
             "name": "get_campaigns",
             "description": "获取当前所有广告计划的数据，包括名称、状态、预算、消耗、ROI等指标。当用户询问广告效果、投放数据时调用此工具。"
-        }
+        },
     },
-    {
+    "diagnosis": {
         "type": "function",
         "function": {
             "name": "get_diagnosis",
             "description": "获取智能诊断建议，分析当前投放问题和优化机会。当用户询问如何优化、有什么问题时调用此工具。"
-        }
+        },
     },
+    "product_ads": {
+        "type": "function",
+        "function": {
+            "name": "get_product_ads",
+            "description": "获取直播间商品投放列表，包括商品、国家市场、售价、库存、消耗、GMV、ROAS、转化率。当用户问商品、货盘、爆品或投放列表时调用。"
+        },
+    },
+    "creative_library": {
+        "type": "function",
+        "function": {
+            "name": "get_creative_library",
+            "description": "获取直播间素材库，包括直播切片、短视频素材、CTR、CVR、疲劳度和可用状态。当用户问素材、创意疲劳、换素材时调用。"
+        },
+    },
+    "business_clues": {
+        "type": "function",
+        "function": {
+            "name": "search_business_clues",
+            "description": "调用小宿/Cloudsway SmartSearch 搜索外部经营线索。适合用户询问市场趋势、竞品动态、TikTok Shop 平台变化、达人内容、选品机会、海外直播电商线索时调用。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "搜索关键词或自然语言问题，例如：TikTok Shop Thailand beauty livestream trends",
+                    },
+                    "count": {
+                        "type": "integer",
+                        "description": "返回结果数量，默认8，范围1到20",
+                    },
+                    "freshness": {
+                        "type": "string",
+                        "description": "时间过滤",
+                        "enum": ["Day", "Week", "Month"],
+                    },
+                    "sites": {
+                        "type": "array",
+                        "description": "可选站点过滤，例如 tiktok.com、shopify.com",
+                        "items": {"type": "string"},
+                    },
+                    "enable_content": {
+                        "type": "boolean",
+                        "description": "是否抓取正文片段，默认true",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+}
+
+ACTION_TOOLS = [
     {
         "type": "function",
         "function": {
@@ -202,6 +463,20 @@ AGENT_TOOLS = [
         }
     }
 ]
+
+
+def build_agent_tools(enabled_data_sources: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+    """Build OpenAI-compatible tool schemas from selected data scopes."""
+    selected_sources = _selected_source_ids(enabled_data_sources)
+    tools = [
+        TOOL_BY_SOURCE[source["id"]]
+        for source in AGENT_DATA_SOURCES
+        if source["id"] in selected_sources and source["id"] in TOOL_BY_SOURCE
+    ]
+    return tools + ACTION_TOOLS
+
+
+AGENT_TOOLS = build_agent_tools()
 
 # ==================== 模拟数据存储 (内存) ====================
 
@@ -302,6 +577,334 @@ def init_mock_data():
 
 # 启动时初始化数据
 init_mock_data()
+
+
+def build_realtime_metrics_snapshot() -> MetricsSnapshot:
+    """Build a current metrics snapshot for API responses and agent tools."""
+    campaigns = list(MOCK_CAMPAIGNS.values())
+    active_campaigns = [c for c in campaigns if c.status == "active"]
+
+    total_spend = sum(c.spend for c in campaigns)
+    total_gmv = sum(c.spend * c.roi for c in campaigns)
+    avg_roi = total_gmv / total_spend if total_spend > 0 else 0
+    fluctuation = random.uniform(0.98, 1.02)
+
+    return MetricsSnapshot(
+        timestamp=datetime.now().isoformat(),
+        total_spend=round(total_spend * fluctuation, 2),
+        total_gmv=round(total_gmv * fluctuation, 2),
+        roi=round(avg_roi * fluctuation, 2),
+        ctr=round(random.uniform(2.8, 3.5), 2),
+        cvr=round(random.uniform(2.0, 4.0), 2),
+        active_campaigns=len(active_campaigns)
+    )
+
+
+def build_metrics_trend(hours: int = 24) -> List[Dict[str, Any]]:
+    """Build hourly spend, GMV and ROAS trend data."""
+    hours = max(1, min(hours, 168))
+    data = []
+    now = datetime.now()
+
+    for i in range(hours):
+        timestamp = now - timedelta(hours=hours - i)
+        hour = timestamp.hour
+        if 8 <= hour <= 10 or 19 <= hour <= 22:
+            base_spend = random.uniform(3000, 5000)
+        elif 0 <= hour <= 6:
+            base_spend = random.uniform(500, 1500)
+        else:
+            base_spend = random.uniform(1500, 3000)
+
+        roi = random.uniform(3.5, 5.0)
+        data.append({
+            "time": timestamp.strftime("%H:%M"),
+            "date": timestamp.strftime("%Y-%m-%d"),
+            "spend": round(base_spend, 2),
+            "gmv": round(base_spend * roi, 2),
+            "roas": round(roi, 2)
+        })
+
+    return data
+
+
+def get_product_ad_rows() -> List[Dict[str, Any]]:
+    """Mock live-commerce product ad rows for the agent-native page."""
+    return [
+        {
+            "id": "sku-1021",
+            "product": "Ceramide Repair Cushion Foundation",
+            "market": "TH",
+            "price": 19.9,
+            "currency": "USD",
+            "stock": 1280,
+            "commission_rate": "18%",
+            "spend": 2480.4,
+            "gmv": 13920.8,
+            "roas": 5.61,
+            "ctr": 3.9,
+            "cvr": 6.2,
+            "status": "scaling",
+            "note": "晚高峰转化稳定，可承接加预算",
+        },
+        {
+            "id": "sku-1044",
+            "product": "Vitamin C Glow Serum Set",
+            "market": "VN",
+            "price": 24.5,
+            "currency": "USD",
+            "stock": 860,
+            "commission_rate": "15%",
+            "spend": 1840.0,
+            "gmv": 6940.3,
+            "roas": 3.77,
+            "ctr": 2.8,
+            "cvr": 4.4,
+            "status": "learning",
+            "note": "素材点击正常，直播讲解转化偏低",
+        },
+        {
+            "id": "sku-1188",
+            "product": "Wireless Mini Hair Styler",
+            "market": "US",
+            "price": 36.0,
+            "currency": "USD",
+            "stock": 340,
+            "commission_rate": "12%",
+            "spend": 960.8,
+            "gmv": 2290.0,
+            "roas": 2.38,
+            "ctr": 4.2,
+            "cvr": 1.8,
+            "status": "watch",
+            "note": "库存偏低，建议限制扩量",
+        },
+        {
+            "id": "sku-1206",
+            "product": "Seamless Sculpt Leggings",
+            "market": "ID",
+            "price": 16.8,
+            "currency": "USD",
+            "stock": 2140,
+            "commission_rate": "20%",
+            "spend": 1220.5,
+            "gmv": 7460.2,
+            "roas": 6.11,
+            "ctr": 5.1,
+            "cvr": 7.0,
+            "status": "winner",
+            "note": "短视频切片带货强，适合复制到相邻人群",
+        },
+    ]
+
+
+def get_creative_library_rows() -> List[Dict[str, Any]]:
+    """Mock creative asset rows for live-room material decisions."""
+    return [
+        {
+            "id": "crt-2301",
+            "name": "主播试色_15s_高光片段",
+            "type": "live_clip",
+            "product": "Ceramide Repair Cushion Foundation",
+            "market": "TH",
+            "ctr": 4.8,
+            "cvr": 6.5,
+            "fatigue": 22,
+            "status": "active",
+            "hook": "3 秒前后脸部对比",
+        },
+        {
+            "id": "crt-2317",
+            "name": "买一送一_优惠锚点_短视频",
+            "type": "short_video",
+            "product": "Vitamin C Glow Serum Set",
+            "market": "VN",
+            "ctr": 3.1,
+            "cvr": 4.0,
+            "fatigue": 48,
+            "status": "testing",
+            "hook": "价格锚点 + 套装价值感",
+        },
+        {
+            "id": "crt-2330",
+            "name": "造型器_痛点开场_UGC",
+            "type": "ugc_video",
+            "product": "Wireless Mini Hair Styler",
+            "market": "US",
+            "ctr": 5.6,
+            "cvr": 2.2,
+            "fatigue": 64,
+            "status": "fatiguing",
+            "hook": "通勤前 5 分钟快速造型",
+        },
+        {
+            "id": "crt-2342",
+            "name": "运动裤_腰线对比_直播切片",
+            "type": "live_clip",
+            "product": "Seamless Sculpt Leggings",
+            "market": "ID",
+            "ctr": 6.4,
+            "cvr": 7.6,
+            "fatigue": 18,
+            "status": "winner",
+            "hook": "身材修饰前后对比",
+        },
+    ]
+
+
+def _truncate_text(value: Optional[str], max_length: int = 900) -> str:
+    if not value:
+        return ""
+    text = " ".join(str(value).split())
+    if len(text) <= max_length:
+        return text
+    return f"{text[:max_length].rstrip()}..."
+
+
+def _source_from_url(url: str) -> str:
+    if not url:
+        return ""
+    try:
+        hostname = urlparse(url).hostname or ""
+        return hostname.removeprefix("www.")
+    except Exception:
+        return ""
+
+
+def _clue_angle(text: str) -> str:
+    text_lower = text.lower()
+    if any(keyword in text_lower for keyword in ["competitor", "brand", "benchmark", "pricing", "market share", "竞品"]):
+        return "竞品动态"
+    if any(keyword in text_lower for keyword in ["creator", "influencer", "kol", "达人", "affiliate"]):
+        return "达人/联盟线索"
+    if any(keyword in text_lower for keyword in ["policy", "seller", "fee", "regulation", "平台", "规则"]):
+        return "平台规则"
+    if any(keyword in text_lower for keyword in ["trend", "viral", "hashtag", "直播", "短视频", "content"]):
+        return "内容趋势"
+    return "市场机会"
+
+
+def _normalize_search_results(payload: Dict[str, Any]) -> List[Dict[str, Any]]:
+    web_pages = payload.get("webPages", {}) if isinstance(payload, dict) else {}
+    items = web_pages.get("value", []) if isinstance(web_pages, dict) else []
+    results = []
+
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url", "")
+        main_text = item.get("mainText") or item.get("content") or ""
+        results.append({
+            "title": item.get("name", ""),
+            "url": url,
+            "source": _source_from_url(url),
+            "snippet": _truncate_text(item.get("snippet", ""), 420),
+            "main_text": _truncate_text(main_text, 900),
+            "content_crawled": item.get("contentCrawled"),
+            "score": item.get("score"),
+        })
+
+    return results
+
+
+def _build_business_clues(query: str, results: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    clues = []
+    for result in results[:6]:
+        text = f"{result.get('title', '')} {result.get('snippet', '')} {result.get('main_text', '')}"
+        clues.append({
+            "angle": _clue_angle(text),
+            "title": result.get("title", ""),
+            "source": result.get("source", ""),
+            "url": result.get("url", ""),
+            "evidence": result.get("snippet") or _truncate_text(result.get("main_text", ""), 260),
+            "next_action": f"结合「{query}」评估是否转化为直播间选品、素材或投放测试。",
+        })
+    return clues
+
+
+def search_business_clues(arguments: Dict[str, Any]) -> Dict[str, Any]:
+    """Call Xiaosu/Cloudsway SmartSearch and normalize results for the agent."""
+    config = get_xiaosu_search_config()
+    query = str(arguments.get("query", "")).strip()
+    if not query:
+        return {
+            "success": False,
+            "type": "business_clues",
+            "error": "query 不能为空",
+        }
+
+    if not config["api_key"]:
+        return {
+            "success": False,
+            "type": "business_clues",
+            "error": "CLOUDSWAY_SEARCH_KEY 或 XIAOSU_SEARCH_API_KEY 未配置，无法调用小宿/Cloudsway Search。",
+            "data": {
+                "query": query,
+                "setup": "在 .env.hackathon 中填写 CLOUDSWAY_SEARCH_KEY 或 XIAOSU_SEARCH_API_KEY 后重启 Docker 服务。",
+            },
+        }
+
+    count = int(arguments.get("count") or 8)
+    count = max(1, min(count, 20))
+    enable_content = arguments.get("enable_content", True)
+    sites = arguments.get("sites") or []
+    if isinstance(sites, str):
+        sites = [sites]
+
+    params = {
+        "q": query,
+        "count": count,
+        "enableContent": str(bool(enable_content)).lower(),
+        "contentType": "TEXT",
+        "mainText": "true",
+        "contentTimeout": 3,
+    }
+
+    freshness = arguments.get("freshness")
+    if freshness in {"Day", "Week", "Month"}:
+        params["freshness"] = freshness
+    if sites:
+        params["sites"] = ",".join([site.strip() for site in sites if site and site.strip()])
+
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.get(
+                config["api_base"],
+                headers={
+                    "Authorization": config["api_key"],
+                    "pragma": "no-cache",
+                },
+                params=params,
+            )
+            response.raise_for_status()
+            payload = response.json()
+    except httpx.HTTPStatusError as exc:
+        return {
+            "success": False,
+            "type": "business_clues",
+            "error": f"小宿/Cloudsway Search HTTP {exc.response.status_code}: {_truncate_text(exc.response.text, 240)}",
+            "data": {"query": query},
+        }
+    except Exception as exc:
+        return {
+            "success": False,
+            "type": "business_clues",
+            "error": f"小宿/Cloudsway Search 调用失败: {str(exc)}",
+            "data": {"query": query},
+        }
+
+    results = _normalize_search_results(payload)
+    return {
+        "success": True,
+        "type": "business_clues",
+        "data": {
+            "query": query,
+            "original_query": payload.get("queryContext", {}).get("originalQuery", query),
+            "results": results,
+            "clues": _build_business_clues(query, results),
+        },
+        "count": len(results),
+    }
 
 # ==================== API 路由 ====================
 
@@ -419,57 +1022,14 @@ async def toggle_campaign_status(campaign_id: int):
 @app.get("/api/metrics/realtime", response_model=MetricsSnapshot, tags=["Metrics"])
 async def get_realtime_metrics():
     """获取实时指标数据"""
-    campaigns = list(MOCK_CAMPAIGNS.values())
-    active_campaigns = [c for c in campaigns if c.status == "active"]
-    
-    total_spend = sum(c.spend for c in campaigns)
-    total_gmv = sum(c.spend * c.roi for c in campaigns)
-    avg_roi = total_gmv / total_spend if total_spend > 0 else 0
-    
-    # 添加一点随机波动模拟实时数据
-    fluctuation = random.uniform(0.98, 1.02)
-    
-    return MetricsSnapshot(
-        timestamp=datetime.now().isoformat(),
-        total_spend=round(total_spend * fluctuation, 2),
-        total_gmv=round(total_gmv * fluctuation, 2),
-        roi=round(avg_roi * fluctuation, 2),
-        ctr=round(random.uniform(2.8, 3.5), 2),
-        cvr=round(random.uniform(2.0, 4.0), 2),
-        active_campaigns=len(active_campaigns)
-    )
+    return build_realtime_metrics_snapshot()
 
 @app.get("/api/metrics/trend", tags=["Metrics"])
 async def get_metrics_trend(
     hours: int = Query(24, ge=1, le=168, description="获取多少小时内的趋势数据")
 ):
     """获取趋势数据 (用于图表展示)"""
-    data = []
-    now = datetime.now()
-    
-    for i in range(hours):
-        timestamp = now - timedelta(hours=hours - i)
-        
-        # 模拟一天内的流量分布 (早高峰、晚高峰)
-        hour = timestamp.hour
-        if 8 <= hour <= 10 or 19 <= hour <= 22:
-            base_spend = random.uniform(3000, 5000)
-        elif 0 <= hour <= 6:
-            base_spend = random.uniform(500, 1500)
-        else:
-            base_spend = random.uniform(1500, 3000)
-        
-        roi = random.uniform(3.5, 5.0)
-        
-        data.append({
-            "time": timestamp.strftime("%H:%M"),
-            "date": timestamp.strftime("%Y-%m-%d"),
-            "spend": round(base_spend, 2),
-            "gmv": round(base_spend * roi, 2),
-            "roas": round(roi, 2)
-        })
-    
-    return data
+    return build_metrics_trend(hours)
 
 # ---------- 竞价服务 ----------
 
@@ -666,10 +1226,90 @@ async def ai_chat(message: str = Query(..., min_length=1)):
         "source": "default"
     }
 
+
+@app.get("/api/agent-mode/workbench", tags=["Agent Mode"])
+def get_agent_mode_workbench():
+    """Read the Agent Mode workbench data boundary.
+
+    The current implementation returns an in-memory seed store. This endpoint is
+    intentionally shaped like the future database-backed contract so the frontend
+    is not coupled to JSX literals.
+    """
+    return read_workbench()
+
+
+@app.put("/api/agent-mode/workbench", tags=["Agent Mode"])
+def update_agent_mode_workbench(payload: Dict[str, Any]):
+    """Update the Agent Mode workbench seed store."""
+    return write_workbench(payload)
+
+
+@app.get("/api/ai/data-sources", tags=["AI Agent"])
+async def list_agent_data_sources():
+    """获取 Agent 可访问的数据源列表。"""
+    return {
+        "data_sources": get_agent_data_sources(),
+        "default_enabled": [source["id"] for source in AGENT_DATA_SOURCES if source["enabled_by_default"]],
+    }
+
+
+@app.get("/api/ai/models", tags=["AI Agent"])
+async def list_agent_models():
+    """获取 Qiji/OpenAI-compatible 可选模型列表。"""
+    config = get_qiji_config()
+
+    if not config["api_key"]:
+        return {
+            "default_model": config["model"],
+            "models": get_agent_model_options(),
+            "source": "fallback",
+            "message": "QIJI_API_KEY 未配置，已使用 qiji_api.md 中验证过的 gpt-5 作为默认模型。配置 key 后会自动读取 /models。",
+        }
+
+    try:
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(
+            api_key=config["api_key"],
+            base_url=config["api_base"],
+            default_headers={"User-Agent": "curl/8.5.0"},
+        )
+        models_page = await client.models.list()
+        model_ids = [model.id for model in models_page.data if getattr(model, "id", None)]
+        return {
+            "default_model": config["model"],
+            "models": get_agent_model_options(model_ids),
+            "source": "qiji",
+        }
+    except Exception as exc:
+        return {
+            "default_model": config["model"],
+            "models": get_agent_model_options(),
+            "source": "fallback",
+            "message": f"读取 Qiji /models 失败，已回退到默认模型: {str(exc)}",
+        }
+
 # ---------- Agent 工具执行 ----------
 
 def execute_tool(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, Any]:
     """执行 Agent 工具调用"""
+    arguments = arguments or {}
+
+    if tool_name == "get_realtime_metrics":
+        snapshot = build_realtime_metrics_snapshot()
+        return {
+            "success": True,
+            "data": snapshot.model_dump(),
+        }
+
+    elif tool_name == "get_metrics_trend":
+        hours = int(arguments.get("hours", 24) or 24)
+        trend = build_metrics_trend(hours)
+        return {
+            "success": True,
+            "data": trend,
+            "count": len(trend),
+        }
 
     if tool_name == "get_campaigns":
         # 获取所有广告计划数据
@@ -724,9 +1364,28 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, 
             "count": len(diagnostics)
         }
 
+    elif tool_name == "get_product_ads":
+        rows = get_product_ad_rows()
+        return {
+            "success": True,
+            "data": rows,
+            "count": len(rows),
+        }
+
+    elif tool_name == "get_creative_library":
+        rows = get_creative_library_rows()
+        return {
+            "success": True,
+            "data": rows,
+            "count": len(rows),
+        }
+
+    elif tool_name == "search_business_clues":
+        return search_business_clues(arguments)
+
     elif tool_name == "create_campaign_preview":
         # 创建计划预览（不实际创建，返回预览数据）
-        args = arguments or {}
+        args = arguments
         preview = {
             "name": args.get("name", f"新建计划_{datetime.now().strftime('%m%d')}"),
             "budget": args.get("budget", 5000),
@@ -760,129 +1419,101 @@ async def agent_chat(request: AgentChatRequest):
 
     async def generate_stream():
         try:
-            # 构建消息列表
+            from openai import AsyncOpenAI
+
+            config = get_qiji_config()
+            selected_model = (
+                request.model
+                or (request.models[0] if request.models else None)
+                or config["model"]
+                or QIJI_DEFAULT_MODEL
+            )
+
+            if not config["api_key"]:
+                yield f"data: {json.dumps({'type': 'error', 'content': 'QIJI_API_KEY 未配置，无法调用 Qiji/OpenAI-compatible 模型。请在 .env.hackathon 中填写后重启容器。'}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             messages = [{"role": "system", "content": AGENT_SYSTEM_PROMPT}]
             messages.extend(request.messages)
 
-            # 调用 LLM API
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                # 第一次调用 - 可能会返回工具调用
-                response = await client.post(
-                    f"{LLM_CONFIG['api_base']}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {LLM_CONFIG['api_key']}",
-                        "Content-Type": "application/json"
-                    },
-                    json={
-                        "model": LLM_CONFIG["model"],
-                        "messages": messages,
-                        "tools": AGENT_TOOLS if request.enable_tools else None,
-                        "stream": False  # 先非流式获取，检查是否有工具调用
-                    }
-                )
+            client = AsyncOpenAI(
+                api_key=config["api_key"],
+                base_url=config["api_base"],
+                default_headers={"User-Agent": "curl/8.5.0"},
+                timeout=120.0,
+            )
 
-                if response.status_code != 200:
-                    error_msg = f"LLM API 错误: {response.status_code}"
-                    yield f"data: {json.dumps({'type': 'error', 'content': error_msg}, ensure_ascii=False)}\n\n"
-                    return
+            yield f"data: {json.dumps({'type': 'model', 'model': selected_model}, ensure_ascii=False)}\n\n"
 
-                result = response.json()
-                choice = result.get("choices", [{}])[0]
-                message = choice.get("message", {})
+            tools = build_agent_tools(request.enabled_data_sources) if request.enable_tools else []
+            first_call_kwargs = {
+                "model": selected_model,
+                "messages": messages,
+                "stream": False,
+                "max_completion_tokens": 900,
+                "extra_body": {"reasoning_effort": "minimal"},
+            }
+            if tools:
+                first_call_kwargs["tools"] = tools
 
-                # 检查是否有工具调用
-                tool_calls = message.get("tool_calls", [])
+            completion = await client.chat.completions.create(**first_call_kwargs)
+            choice = completion.choices[0] if completion.choices else None
+            assistant_message = choice.message if choice else None
+            tool_calls = assistant_message.tool_calls if assistant_message else []
 
-                if tool_calls:
-                    # 有工具调用，执行工具
-                    messages.append(message)
+            if tool_calls:
+                messages.append(assistant_message.model_dump(exclude_none=True))
 
-                    for tool_call in tool_calls:
-                        tool_name = tool_call["function"]["name"]
-                        try:
-                            tool_args = json.loads(tool_call["function"].get("arguments", "{}"))
-                        except:
-                            tool_args = {}
+                for tool_call in tool_calls:
+                    tool_name = tool_call.function.name
+                    try:
+                        tool_args = json.loads(tool_call.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        tool_args = {}
 
-                        # 发送工具调用事件
-                        yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'arguments': tool_args}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'tool_call', 'tool': tool_name, 'arguments': tool_args}, ensure_ascii=False)}\n\n"
 
-                        # 执行工具
-                        tool_result = execute_tool(tool_name, tool_args)
+                    tool_result = execute_tool(tool_name, tool_args)
+                    yield f"data: {json.dumps({'type': 'tool_result', 'tool': tool_name, 'result': tool_result}, ensure_ascii=False)}\n\n"
 
-                        # 发送工具结果事件
-                        yield f"data: {json.dumps({'type': 'tool_result', 'tool': tool_name, 'result': tool_result}, ensure_ascii=False)}\n\n"
+                    messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": json.dumps(tool_result, ensure_ascii=False),
+                    })
+            elif assistant_message and assistant_message.content:
+                yield f"data: {json.dumps({'type': 'content', 'content': assistant_message.content}, ensure_ascii=False)}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
 
-                        # 添加工具结果到消息
-                        messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call["id"],
-                            "content": json.dumps(tool_result, ensure_ascii=False)
-                        })
+            stream = await client.chat.completions.create(
+                model=selected_model,
+                messages=messages,
+                stream=True,
+                max_completion_tokens=900,
+                extra_body={"reasoning_effort": "minimal"},
+            )
 
-                    # 带工具结果再次调用 LLM，流式返回
-                    stream_response = await client.post(
-                        f"{LLM_CONFIG['api_base']}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {LLM_CONFIG['api_key']}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": LLM_CONFIG["model"],
-                            "messages": messages,
-                            "stream": True
-                        }
-                    )
+            async for chunk in stream:
+                if not chunk.choices:
+                    continue
+                delta = chunk.choices[0].delta
+                content = getattr(delta, "content", "") or ""
+                if content:
+                    yield f"data: {json.dumps({'type': 'content', 'content': content}, ensure_ascii=False)}\n\n"
 
-                    # 流式返回内容
-                    async for line in stream_response.aiter_lines():
-                        if line.startswith("data: "):
-                            data_str = line[6:]
-                            if data_str.strip() == "[DONE]":
-                                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                                break
-                            try:
-                                data = json.loads(data_str)
-                                delta = data.get("choices", [{}])[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield f"data: {json.dumps({'type': 'content', 'content': content}, ensure_ascii=False)}\n\n"
-                            except:
-                                pass
-                else:
-                    # 没有工具调用，流式返回内容
-                    stream_response = await client.post(
-                        f"{LLM_CONFIG['api_base']}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {LLM_CONFIG['api_key']}",
-                            "Content-Type": "application/json"
-                        },
-                        json={
-                            "model": LLM_CONFIG["model"],
-                            "messages": messages,
-                            "stream": True
-                        }
-                    )
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
-                    async for line in stream_response.aiter_lines():
-                        if line.startswith("data: "):
-                            data_str = line[6:]
-                            if data_str.strip() == "[DONE]":
-                                yield f"data: {json.dumps({'type': 'done'})}\n\n"
-                                break
-                            try:
-                                data = json.loads(data_str)
-                                delta = data.get("choices", [{}])[0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    yield f"data: {json.dumps({'type': 'content', 'content': content}, ensure_ascii=False)}\n\n"
-                            except:
-                                pass
-
-        except httpx.TimeoutException:
+        except ImportError:
+            yield f"data: {json.dumps({'type': 'error', 'content': '后端缺少 openai Python SDK，请重新构建 Docker 镜像。'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except asyncio.TimeoutError:
             yield f"data: {json.dumps({'type': 'error', 'content': 'LLM 请求超时，请稍后重试'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'content': f'服务异常: {str(e)}'}, ensure_ascii=False)}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
     return StreamingResponse(
         generate_stream(),
@@ -893,6 +1524,36 @@ async def agent_chat(request: AgentChatRequest):
             "X-Accel-Buffering": "no"
         }
     )
+
+# ---------- Orchestrator 对话接口 ----------
+
+@app.post("/api/orchestrator/chat", tags=["Orchestrator"])
+async def orchestrator_chat_endpoint(request: AgentChatRequest):
+    """Orchestrator 多 Agent 编排对话 — SSE 流式响应"""
+    workbench = read_workbench()
+    return StreamingResponse(
+        orchestrator_chat(request.messages, workbench),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@app.post("/api/workbench/reset", tags=["Orchestrator"])
+async def reset_workbench_endpoint():
+    """重置工作台到初始 briefing 状态"""
+    wb = reset_workbench()
+    return {"ok": True, "workbench": wb}
+
+
+@app.get("/api/workbench/state", tags=["Orchestrator"])
+async def get_workbench_state():
+    """获取完整工作台状态"""
+    return {"ok": True, "workbench": read_workbench()}
+
 
 # ==================== 启动入口 ====================
 

@@ -17,6 +17,7 @@ tqdm>=4.66.0
 
 # HTTP 客户端 (可选，用于外部 API 调用)
 httpx>=0.25.0
+openai>=1.100.0
 
 # 环境变量管理
 python-dotenv>=1.0.0

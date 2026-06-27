@@ -55,6 +55,8 @@ import {
 // API 服务
 import * as api from './services/api';
 import { chatWithAgent } from './services/api';
+import AgentLoopPage from './agent-loop/AgentLoopPage';
+import AgentModePage from './agent-mode/AgentModePage';
 
 // Components
 import CampaignSimulationModal from './components/CampaignSimulationModal';
@@ -367,7 +369,7 @@ const docCurrentFocus = DOC_CONTENT.zh.currentFocus;
 const completedMilestones = DOC_CONTENT.zh.completedMilestones;
 const upcomingRoadmap = DOC_CONTENT.zh.upcomingRoadmap;
 
-export default function AdPlatform() {
+function DashboardApp() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [campaigns, setCampaigns] = useState(initialCampaigns);
@@ -1892,4 +1894,16 @@ export default function AdPlatform() {
 
           </div>
   );
+}
+
+export default function AdPlatform() {
+  if (window.location.pathname === '/agent-mode') {
+    return <AgentModePage />;
+  }
+
+  if (window.location.pathname === '/agent-loop') {
+    return <AgentLoopPage />;
+  }
+
+  return <DashboardApp />;
 }
