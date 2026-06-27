@@ -57,6 +57,7 @@ import * as api from './services/api';
 import { chatWithAgent } from './services/api';
 import AgentLoopPage from './agent-loop/AgentLoopPage';
 import AgentModePage from './agent-mode/AgentModePage';
+import ManualWorkbenchPage from './manual-workbench/ManualWorkbenchPage';
 
 // Components
 import CampaignSimulationModal from './components/CampaignSimulationModal';
@@ -1905,5 +1906,5 @@ export default function AdPlatform() {
     return <AgentLoopPage />;
   }
 
-  return <DashboardApp />;
+  return <ManualWorkbenchPage />;
 }

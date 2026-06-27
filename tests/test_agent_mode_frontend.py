@@ -13,7 +13,7 @@ class AgentModeFrontendTest(unittest.TestCase):
         self.assertIn("'/agent-mode'", app_source)
         self.assertLess(
             app_source.index("'/agent-mode'"),
-            app_source.index("return <DashboardApp />"),
+            app_source.index("return <ManualWorkbenchPage />"),
         )
 
     def test_agent_mode_page_contains_core_workbench_sections(self):

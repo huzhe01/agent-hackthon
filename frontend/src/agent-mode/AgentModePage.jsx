@@ -247,6 +247,7 @@ function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, s
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-base font-black text-white">麦</div>
         <div className="min-w-0">
           <div className="truncate text-base font-semibold text-white">MaiDeal工作台</div>
+          <div className="truncate text-xs text-slate-500">直播后台</div>
         </div>
         <ThemeToggle theme={theme} setTheme={setTheme} />
       </div>
