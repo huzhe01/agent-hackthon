@@ -351,19 +351,6 @@ docker compose --env-file .env.hackathon -f docker-compose.hackathon.yml up -d -
 
 前端容器会通过 Nginx 托管静态资源，并把 `/api` 和 `/health` 代理到后端容器。
 
-## 环境变量
-
-| 变量 | 说明 |
-| --- | --- |
-| `QIJI_BASE_URL` | Qiji/OpenAI-compatible API 地址，默认可指向 `https://api.openai-next.com/v1` |
-| `QIJI_API_KEY` | 服务端模型密钥 |
-| `QIJI_MODEL` | 默认模型，例如 `gpt-5` |
-| `SUPABASE_URL` | Supabase 项目地址 |
-| `SUPABASE_SECRET_KEY` | 后端服务端密钥，不进入前端 |
-| `AGENT_MODE_TENANT_KEY` | 演示租户标识，默认 `demo` |
-| `CLOUDSWAY_SEARCH_KEY` / `XIAOSU_SEARCH_API_KEY` | 外部经营线索搜索密钥 |
-| `VITE_API_BASE_URL` | 前端 API 基础地址，Docker 同域部署时可留空 |
-
 ## 测试与验证
 
 后端和行为测试：
@@ -384,12 +371,3 @@ npm run build
 ```bash
 curl -I https://agent-hackthon.680728.xyz/agent-mode
 ```
-
-## 后续方向
-
-- 接入真实 TikTok、Meta、Amazon、Shopee 或小红书聚光数据。
-- 将模拟器的 SKU、渠道、预算池和事件替换为真实平台回传。
-- 把 `allocate_budget` 升级为更完整的约束优化器。
-- 引入素材生成、图文投稿、小红书审核和上传技能。
-- 让 Memory 参与下一次方案生成，实现历史投放经验复用。
-- 增加企业权限、审批流、审计日志和多租户能力。
