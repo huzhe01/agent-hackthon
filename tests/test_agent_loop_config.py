@@ -175,6 +175,27 @@ class AgentLoopConfigTest(unittest.TestCase):
         self.assertEqual(updated["layout"]["left_panel_width"], 330)
         self.assertEqual(updated["layout"]["right_panel_width"], 460)
 
+    def test_agent_mode_workbench_normalizes_stale_live_demo_interval(self):
+        api = importlib.import_module("backend.api")
+        importlib.reload(api)
+        api.reset_workbench()
+
+        updated = api.update_agent_mode_workbench({
+            "live_demo": {"tick_interval_ms": 60000},
+            "budget_projects": [
+                {
+                    "id": "stale-project",
+                    "name": "旧节奏项目",
+                    "workbench": {"live_demo": {"tick_interval_ms": 60000}},
+                },
+            ],
+        })
+        workbench = api.get_agent_mode_workbench()
+
+        self.assertEqual(updated["live_demo"]["tick_interval_ms"], 5000)
+        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 5000)
+        self.assertEqual(workbench["budget_projects"][0]["workbench"]["live_demo"]["tick_interval_ms"], 5000)
+
 
 if __name__ == "__main__":
     unittest.main()

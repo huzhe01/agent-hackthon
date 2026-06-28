@@ -10,6 +10,7 @@ from typing import Any, Dict
 
 BRIEF_CORE_FIELDS = {"budget", "target_roas", "products", "market", "channels"}
 BRIEF_ALL_FIELDS = BRIEF_CORE_FIELDS | {"live_window", "inventory", "margin", "constraints"}
+LIVE_DEMO_TICK_INTERVAL_MS = 5000
 
 _INITIAL_BRIEF: Dict[str, Any] = {
     "budget": None,
@@ -658,18 +659,36 @@ def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     return base
 
 
+def _normalize_live_demo_timing(workbench: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep persisted or client-written demo timing aligned with the current demo cadence."""
+    if not isinstance(workbench, dict):
+        return workbench
+
+    live_demo = workbench.get("live_demo")
+    if isinstance(live_demo, dict):
+        live_demo["tick_interval_ms"] = LIVE_DEMO_TICK_INTERVAL_MS
+
+    for project in workbench.get("budget_projects") or []:
+        if isinstance(project, dict) and isinstance(project.get("workbench"), dict):
+            _normalize_live_demo_timing(project["workbench"])
+
+    return workbench
+
+
 def read_workbench() -> Dict[str, Any]:
-    return deepcopy(AGENT_MODE_WORKBENCH)
+    return _normalize_live_demo_timing(deepcopy(AGENT_MODE_WORKBENCH))
 
 
 def write_workbench(payload: Dict[str, Any]) -> Dict[str, Any]:
     _deep_merge(AGENT_MODE_WORKBENCH, payload or {})
+    _normalize_live_demo_timing(AGENT_MODE_WORKBENCH)
     return read_workbench()
 
 
 def patch_workbench(patch: Dict[str, Any]) -> None:
     """Apply a partial patch without returning a full copy."""
     _deep_merge(AGENT_MODE_WORKBENCH, patch or {})
+    _normalize_live_demo_timing(AGENT_MODE_WORKBENCH)
 
 
 def reset_workbench() -> Dict[str, Any]:
