@@ -296,7 +296,7 @@ class AgentModeRepository:
             "live_rooms": (version or {}).get("live_rooms", []),
             "live_demo": {
                 "enabled": True,
-                "tick_interval_ms": 60000,
+                "tick_interval_ms": 10000,
                 "frames": [_frame_workbench(row) for row in frames],
             },
             "managed_events": [_event_workbench(row) for row in events],

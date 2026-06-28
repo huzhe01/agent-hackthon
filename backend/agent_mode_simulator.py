@@ -54,6 +54,7 @@ def normalize_brief(brief: Dict[str, Any]) -> Dict[str, Any]:
     product = str(brief.get("products") or "商品").strip()
     market = str(brief.get("market") or "美国 / USD").strip()
     channels = normalize_channels(brief.get("channels"))
+    channel_weights = normalize_channel_weights(brief.get("channels"), channels)
     inventory = max(100, int(_as_float(brief.get("inventory"), 1200)))
     margin_rate = _as_float(brief.get("margin"), 55)
     if margin_rate > 1:
@@ -65,6 +66,7 @@ def normalize_brief(brief: Dict[str, Any]) -> Dict[str, Any]:
         "market": market,
         "currency": _currency_from_market(market),
         "channels": channels,
+        "channel_weights": channel_weights,
         "live_window": brief.get("live_window") or "20:00-23:00",
         "inventory": inventory,
         "margin_rate": round(margin_rate, 2),
@@ -79,13 +81,15 @@ def normalize_channels(raw: Any) -> List[str]:
     candidates = re.split(r"[,，/+、]|\\s+and\\s+|\\s+与\\s+|\\s+和\\s+", text, flags=re.I)
     labels = []
     for candidate in candidates:
-        value = candidate.strip()
+        value = re.sub(r"\b\d{1,3}\s*%", "", candidate).strip()
         if not value or value in {"各 50%", "各50%"}:
             continue
         lower = value.lower()
         if "tiktok" in lower:
             label = "TikTok Ads"
-        elif "meta" in lower or "facebook" in lower:
+        elif "facebook" in lower or lower in {"fb"}:
+            label = "Facebook Ads"
+        elif "meta" in lower:
             label = "Meta Ads"
         elif "shopee" in lower:
             label = "Shopee Ads"
@@ -98,6 +102,21 @@ def normalize_channels(raw: Any) -> List[str]:
         if label not in labels:
             labels.append(label)
     return labels
+
+
+def normalize_channel_weights(raw: Any, channels: List[str]) -> Dict[str, int]:
+    text = str(raw or "")
+    percentages = [int(value) for value in re.findall(r"(\d{1,3})\s*%", text)]
+    if not channels or len(percentages) < len(channels):
+        return {}
+    weights = percentages[:len(channels)]
+    total = sum(weights)
+    if total <= 0:
+        return {}
+    normalized = {channel: round(weight * 100 / total) for channel, weight in zip(channels, weights)}
+    drift = 100 - sum(normalized.values())
+    normalized[channels[-1]] += drift
+    return normalized
 
 
 def _build_product_catalog(brief: Dict[str, Any], rng: random.Random) -> List[Dict[str, Any]]:
@@ -146,7 +165,7 @@ def _build_plan_options(brief: Dict[str, Any]) -> List[Dict[str, Any]]:
     for item in modes:
         plan_id, title, roas_factor, rhythm = item[:4]
         recommended = bool(item[4]) if len(item) > 4 else False
-        split = _channel_split(brief["channels"], plan_id)
+        split = _channel_split(brief["channels"], plan_id, brief.get("channel_weights"))
         split_text = " / ".join(f"{label.replace(' Ads', '')} {pct}%" for label, pct in split.items())
         expected_low = brief["target_roas"] * (roas_factor - 0.08)
         expected_high = brief["target_roas"] * (roas_factor + 0.12)
@@ -224,7 +243,7 @@ def _build_live_demo(
             "id": f"frame-{index:02d}",
             "time": frame_time,
             "elapsed": _elapsed(index),
-            "elapsed_seconds": index * 60,
+            "elapsed_seconds": index * 10,
             "state_label": _state_label(index, alerts),
             "metrics": {
                 "spend": spend,
@@ -315,16 +334,26 @@ def _collect_events(frames: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     return events
 
 
-def _channel_split(channels: List[str], mode: str) -> Dict[str, int]:
+def _channel_split(channels: List[str], mode: str, base_weights: Dict[str, int] | None = None) -> Dict[str, int]:
     if not channels:
         return {}
-    base = 100 // len(channels)
-    split = {channel: base for channel in channels}
-    split[channels[-1]] += 100 - sum(split.values())
-    if len(channels) >= 2 and mode != "steady":
-        shift = 5 if mode == "balanced" else 10
-        split[channels[0]] = max(10, split[channels[0]] - shift)
-        split[channels[-1]] += shift
+    if base_weights:
+        split = {channel: int(base_weights.get(channel, 0)) for channel in channels}
+        drift = 100 - sum(split.values())
+        split[channels[-1]] += drift
+    else:
+        base = 100 // len(channels)
+        split = {channel: base for channel in channels}
+        split[channels[-1]] += 100 - sum(split.values())
+    if len(channels) >= 2:
+        if mode == "steady":
+            shift = min(5, max(0, split[channels[-1]] - 10))
+            split[channels[-1]] -= shift
+            split[channels[0]] += shift
+        elif mode == "aggressive":
+            shift = min(5, max(0, split[channels[0]] - 10))
+            split[channels[0]] -= shift
+            split[channels[-1]] += shift
     return split
 
 
@@ -518,11 +547,15 @@ def _slug(value: str) -> str:
 
 
 def _frame_time(index: int) -> str:
-    return f"20:{index:02d}"
+    seconds = index * 10
+    minute, second = divmod(seconds, 60)
+    return f"20:{minute:02d}:{second:02d}"
 
 
 def _elapsed(index: int) -> str:
-    return f"00:{index:02d}:00"
+    seconds = index * 10
+    minute, second = divmod(seconds, 60)
+    return f"00:00:{second:02d}" if minute == 0 else f"00:{minute:02d}:{second:02d}"
 
 
 def _present(value: Any) -> bool:

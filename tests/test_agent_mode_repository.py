@@ -78,6 +78,7 @@ class AgentModeRepositoryTest(unittest.TestCase):
         self.assertEqual(workbench["active_project_id"], saved["project"]["id"])
         self.assertEqual(workbench["project"]["product"], "磁吸手机壳")
         self.assertEqual(len(workbench["budget_projects"]), 1)
+        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 10000)
         self.assertEqual(len(workbench["live_demo"]["frames"]), len(bundle["live_demo"]["frames"]))
         self.assertEqual(workbench["review_benchmarks"][1]["title"], "MaiDeal 托管实际")
 

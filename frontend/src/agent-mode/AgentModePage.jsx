@@ -369,19 +369,14 @@ function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, s
 function LeftPanel({
   collapsed,
   onToggleCollapsed,
-  goal,
   leftPanelWidth,
   onResizePointerDown,
-  onReset,
   agentRoster = [],
   budgetProjects = [],
   activeBudgetProjectId,
   onSelectBudgetProject,
   onCreateBudgetProject,
 }) {
-  const projectBrief = goal?.name || `${goal?.product || '项目'} · ${goal?.market || '市场'}`;
-  const activeProject = budgetProjects.find((project) => project.id === activeBudgetProjectId);
-
   if (collapsed) {
     return (
       <aside className="flex h-[calc(100vh-4rem)] w-16 shrink-0 flex-col items-center border-r border-white/10 bg-[#0d1320] py-4">
@@ -433,36 +428,6 @@ function LeftPanel({
       </div>
 
       <div className="min-h-0 flex flex-1 flex-col overflow-y-auto p-3">
-        <GlassCard className="p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">当前预算项目</div>
-            <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-              {activeProject?.status || '进行中'}
-            </span>
-          </div>
-          <div className="text-sm font-semibold leading-6 text-slate-100">
-            {projectBrief}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-            <div className="rounded-lg bg-white/5 p-2">
-              <div className="text-slate-500">预算</div>
-              <div className="mt-1 font-semibold text-white">{goal?.totalBudget || activeProject?.budget || '—'}</div>
-            </div>
-            <div className="rounded-lg bg-white/5 p-2">
-              <div className="text-slate-500">目标</div>
-              <div className="mt-1 font-semibold text-white">ROAS {goal?.targetRoas || activeProject?.roas || '—'}</div>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={onReset}
-            className="mt-3 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/5 text-xs font-semibold text-slate-400 hover:bg-white/10 hover:text-white"
-          >
-            <RefreshCw className="h-3 w-3" />
-            重置项目
-          </button>
-        </GlassCard>
-
         <BudgetProjectHistoryList
           budgetProjects={budgetProjects}
           activeBudgetProjectId={activeBudgetProjectId}
@@ -736,7 +701,6 @@ function PlanCanvas({
   selectedRoomId,
   setSelectedRoomId,
   selectedPlan,
-  setSelectedPlan,
   guardLimit,
   onGuardLimitChange,
   approvalThreshold,
@@ -774,7 +738,7 @@ function PlanCanvas({
           setSelectedRoomId={setSelectedRoomId}
           planOptions={roomPlanOptions}
           selectedPlan={selectedPlan}
-          setSelectedPlan={setSelectedPlan}
+          onStartManagedDelivery={onStartManagedDelivery}
         />
       )}
 
@@ -823,18 +787,6 @@ function PlanCanvas({
         </div>
       </GlassCard>
 
-      {planOptions.length > 0 && (
-        <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onStartManagedDelivery}
-            className="flex h-11 items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-5 text-sm font-semibold text-white shadow-lg shadow-violet-950/40"
-          >
-            <Play className="h-4 w-4" />
-            批准并启动托管
-          </button>
-        </div>
-      )}
     </div>
   );
 }
@@ -846,7 +798,7 @@ function ChannelPlanSelector({
   setSelectedRoomId,
   planOptions = [],
   selectedPlan,
-  setSelectedPlan,
+  onStartManagedDelivery,
 }) {
   return (
     <GlassCard className="p-4">
@@ -921,7 +873,7 @@ function ChannelPlanSelector({
                 <button
                   key={plan.id}
                   type="button"
-                  onClick={() => setSelectedPlan(plan.id)}
+                  onClick={() => onStartManagedDelivery(plan.id, plan.title)}
                   className={`relative rounded-lg border p-4 text-left transition ${
                     selectedPlan === plan.id
                       ? 'border-violet-500/70 bg-gradient-to-b from-violet-500/20 to-white/[0.025]'
@@ -936,7 +888,7 @@ function ChannelPlanSelector({
                   <div className={`mt-4 flex h-9 items-center justify-center rounded-lg text-sm font-semibold ${
                     selectedPlan === plan.id ? 'bg-violet-500 text-white' : 'bg-white/5 text-slate-300'
                   }`}>
-                    选择{plan.title}
+                    选择并启动{plan.title}
                   </div>
                 </button>
               ))}
@@ -1308,6 +1260,7 @@ function ReviewCanvas({
   reviewActions = [],
   strategyNotes = [],
   leadRows = [],
+  reviewReady = false,
   goal = {},
   totalBudget = 0,
   usedBudget = 0,
@@ -1370,6 +1323,33 @@ function ReviewCanvas({
       setReviewReportStreaming(false);
     }
   };
+
+  if (!reviewReady) {
+    return (
+      <div className="mx-auto flex max-w-6xl flex-col gap-5">
+        <div className="flex items-end justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-white">盘后迭代</h1>
+            <p className="mt-2 text-sm text-slate-500">在线看板跑完后，盘后迭代会自动生成。</p>
+          </div>
+          <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
+        </div>
+        <GlassCard className="p-8">
+          <div className="flex items-start gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600">
+              <GitCompare className="h-5 w-5" />
+            </div>
+            <div>
+              <div className="text-lg font-semibold text-white">等待直播托管数据完成</div>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                当前还没有完整的投放过程快照。请先选择投放方案并让在线看板至少完成一轮数据推进，系统才会生成复盘基线、关键动作、线索资产和下一场策略。
+              </p>
+            </div>
+          </div>
+        </GlassCard>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex max-w-6xl flex-col gap-5">
@@ -1595,6 +1575,7 @@ function MainCanvas(props) {
             reviewActions={props.reviewActions}
             strategyNotes={props.strategyNotes}
             leadRows={props.leadRows}
+            reviewReady={props.reviewReady}
             goal={props.goal}
             totalBudget={props.totalBudget}
             usedBudget={props.usedBudget}
@@ -1690,9 +1671,10 @@ function DataSourceMenu({ dataSources, enabledDataSources, onToggleSource, open,
   );
 }
 
-function BudgetSummary({ totalBudget, usedBudget, selectedPlan, selectedRoom }) {
+function BudgetSummary({ totalBudget, usedBudget, selectedPlan, selectedRoom, goal }) {
   const pct = totalBudget ? Math.min(100, Math.round((usedBudget / totalBudget) * 100)) : 0;
   const planLabel = { steady: '保守', balanced: '均衡', aggressive: '进取' }[selectedPlan] || '—';
+  const targetRoasLabel = goal?.targetRoas || '3.0';
   return (
     <GlassCard className="p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -1726,7 +1708,7 @@ function BudgetSummary({ totalBudget, usedBudget, selectedPlan, selectedRoom }) 
         </div>
       </div>
       <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.035] p-3 text-xs leading-5 text-slate-400">
-        目标：ROAS ≥ 3.0 · 毛利优先 · 不超总预算 · 自动动作受护栏约束。
+        目标：ROAS ≥ {targetRoasLabel} · 毛利优先 · 不超总预算 · 自动动作受护栏约束。
       </div>
     </GlassCard>
   );
@@ -1755,6 +1737,7 @@ function RightPanel({
   usedBudget,
   selectedPlan,
   selectedRoom,
+  goal,
   chatMessages,
   input,
   setInput,
@@ -1825,7 +1808,7 @@ function RightPanel({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        <BudgetSummary totalBudget={totalBudget} usedBudget={usedBudget} selectedPlan={selectedPlan} selectedRoom={selectedRoom} />
+        <BudgetSummary totalBudget={totalBudget} usedBudget={usedBudget} selectedPlan={selectedPlan} selectedRoom={selectedRoom} goal={goal} />
 
         <div className="mt-4 flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-white/10 bg-white/[0.035]">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
@@ -1901,7 +1884,7 @@ function RightPanel({
 
         <button
           type="button"
-          onClick={() => setInput('我要给便携榨汁杯做一场美国市场直播，预算 5000 美元，目标 ROAS 3.0')}
+          onClick={() => setInput('我要给便携榨汁杯做一场美国市场直播，预算 10000 美元，目标 ROAS 5.0，投放 amazon, facebook, tiktok 三个渠道，预算占比分别是 30%，25%，45%。')}
           className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 text-sm font-semibold text-white shadow-lg shadow-violet-950/40"
         >
           <Sparkles className="h-4 w-4" />
@@ -2017,6 +2000,8 @@ export default function AgentModePage() {
   const liveDemoFrames = currentLiveDemo.frames || [];
   const liveDemoInterval = currentLiveDemo.tick_interval_ms || 1800;
   const currentLiveFrame = liveDemoFrames[liveDemoIndex] || liveDemoFrames[0] || null;
+  const liveDemoCompleted = liveDemoFrames.length > 0 && liveDemoIndex >= liveDemoFrames.length - 1 && phase === 'live';
+  const reviewReady = Boolean(wb.review_ready || currentReviewActions.length || currentStrategyNotes.length || currentLeadRows.length);
   const currentActiveAlert = useMemo(
     () => (currentLiveFrame?.alerts || []).find((alert) => !acknowledgedAlerts[alert.id]) || null,
     [currentLiveFrame, acknowledgedAlerts],
@@ -2036,10 +2021,31 @@ export default function AgentModePage() {
   useEffect(() => {
     if (activeStage !== 'live' || !liveDemoPlaying || liveDemoFrames.length <= 1) return undefined;
     const timer = window.setInterval(() => {
-      setLiveDemoIndex((index) => (index + 1) % liveDemoFrames.length);
+      setLiveDemoIndex((index) => Math.min(index + 1, liveDemoFrames.length - 1));
     }, liveDemoInterval);
     return () => window.clearInterval(timer);
   }, [activeStage, liveDemoPlaying, liveDemoFrames.length, liveDemoInterval]);
+
+  useEffect(() => {
+    if (activeStage === 'live' && liveDemoPlaying && liveDemoFrames.length > 0 && liveDemoIndex >= liveDemoFrames.length - 1) {
+      setLiveDemoPlaying(false);
+    }
+  }, [activeStage, liveDemoPlaying, liveDemoFrames.length, liveDemoIndex]);
+
+  useEffect(() => {
+    const pendingReview = wb.pending_review;
+    if (!liveDemoCompleted || wb.review_ready || !pendingReview) return;
+    const patch = {
+      review_ready: true,
+      review_benchmarks: pendingReview.benchmarks || [],
+      review_actions: pendingReview.key_actions || [],
+      strategy_notes: pendingReview.strategy_notes || [],
+      lead_rows: pendingReview.lead_assets || [],
+      api_trace: pendingReview.api_trace || [],
+    };
+    dispatch({ type: 'WORKBENCH_PATCH', patch });
+    api.updateAgentModeWorkbench(patch).catch(() => {});
+  }, [liveDemoCompleted, wb.pending_review, wb.review_ready]);
 
   const selectedRoom = useMemo(
     () => currentLiveRooms.find((r) => r.id === selectedRoomId) || currentLiveRooms[1] || currentLiveRooms[0] || {},
@@ -2060,14 +2066,11 @@ export default function AgentModePage() {
   const onGuardLimitChange = useCallback((v) => dispatch({ type: 'SET_FIELD', field: 'guard_limit', value: v }), []);
   const onApprovalThresholdChange = useCallback((v) => dispatch({ type: 'SET_FIELD', field: 'approval_threshold', value: v }), []);
 
-  const onStartManagedDelivery = () => {
-    setActiveStage('live');
-    dispatch({ type: 'PHASE_CHANGE', phase: 'live' });
-    setChatMessages((c) => [...c, {
-      id: `assistant-note-${Date.now()}`,
-      role: 'assistant',
-      content: '已批准并启动托管。投放执行模块将按护栏自动调仓；超过审批阈值的动作会进入人工审批。',
-    }]);
+  const onStartManagedDelivery = (planId, requestedPlanTitle) => {
+    const selected = planId || selectedPlan || currentPlanOptions.find((plan) => plan.recommended)?.id || 'balanced';
+    const selectedOption = currentPlanOptions.find((plan) => plan.id === selected);
+    const planTitle = requestedPlanTitle || selectedOption?.title || { steady: '保守', balanced: '均衡', aggressive: '进取' }[selected] || '均衡';
+    runOrchestratorCommand(`选择${planTitle}方案`, { echoUser: false });
   };
 
   const onReset = async () => {
@@ -2201,9 +2204,15 @@ export default function AgentModePage() {
     try {
       await api.chatWithOrchestrator(apiMessages, {
         onToolCall: (tool) => {
+          const toolThinkingText = {
+            extract_and_generate_plans: '已经检索历史的信息和新闻，正在结合你的历史投放记录生成不同模式和方案...',
+            extract_brief: '正在提取预算、目标、商品、市场和渠道占比...',
+            generate_plans: '已经检索历史的信息和新闻，正在生成保守、均衡、进取三套方案...',
+            confirm_and_launch: '正在校验预算护栏并准备启动在线看板...',
+          };
           setChatMessages((c) => c.map((m) =>
             m.id === assistantId && !m.content
-              ? { ...m, content: `正在调用 ${tool}...\n\n` }
+              ? { ...m, content: `${toolThinkingText[tool] || `正在调用 ${tool}...`}\n\n` }
               : m,
           ));
         },
@@ -2217,13 +2226,26 @@ export default function AgentModePage() {
         },
         onWorkbenchPatch: (patch) => {
           dispatch({ type: 'WORKBENCH_PATCH', patch });
+          if (patch.live_demo) {
+            setLiveDemoIndex(0);
+            setLiveDemoPlaying(false);
+            setAcknowledgedAlerts({});
+            approvalPauseRef.current = false;
+          }
         },
         onViewSwitch: (view) => {
           setActiveStage(view);
         },
         onPhaseChange: (newPhase) => {
           dispatch({ type: 'PHASE_CHANGE', phase: newPhase });
-          if (newPhase === 'live') setActiveStage('live');
+          if (newPhase === 'live') {
+            setActiveStage('live');
+            setLiveDemoIndex(0);
+            setLiveDemoPlaying(true);
+            setAcknowledgedAlerts({});
+            approvalPauseRef.current = false;
+          }
+          if (newPhase === 'planning') setActiveStage('plan');
         },
         onAgentAction: (event) => {
           dispatch({ type: 'AGENT_ACTION', event });
@@ -2335,10 +2357,8 @@ export default function AgentModePage() {
           <LeftPanel
             collapsed={leftCollapsed}
             onToggleCollapsed={() => setLeftCollapsed((c) => !c)}
-            goal={goal}
             leftPanelWidth={leftPanelWidth}
             onResizePointerDown={createResizePointerDown('left')}
-            onReset={onReset}
             agentRoster={currentAgentRoster}
             budgetProjects={currentBudgetProjects}
             activeBudgetProjectId={activeBudgetProjectId}
@@ -2357,6 +2377,7 @@ export default function AgentModePage() {
             usedBudget={usedBudget}
             selectedPlan={selectedPlan}
             selectedRoom={selectedRoom}
+            goal={goal}
             chatMessages={chatMessages}
             input={input}
             setInput={setInput}

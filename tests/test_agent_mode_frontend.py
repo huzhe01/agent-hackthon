@@ -34,7 +34,7 @@ class AgentModeFrontendTest(unittest.TestCase):
             "数据资产",
             "便携榨汁杯",
             "托管顾问",
-            "批准并启动托管",
+            "选择并启动",
         ]:
             self.assertIn(required_text, searchable_source)
 
@@ -117,7 +117,6 @@ class AgentModeFrontendTest(unittest.TestCase):
         ]
 
         for required_marker in [
-            "当前预算项目",
             "预算项目历史",
             "BudgetProjectHistoryList",
             "AgentStatusDock",
@@ -137,6 +136,10 @@ class AgentModeFrontendTest(unittest.TestCase):
             "project.budget",
             "project.spent",
             "project.roas",
+            "当前预算项目",
+            "projectBrief",
+            "activeProject",
+            "onReset",
         ]:
             self.assertNotIn(removed_marker, left_panel_source)
 
@@ -303,6 +306,34 @@ class AgentModeFrontendTest(unittest.TestCase):
         self.assertIn("api.chatWithOrchestrator", page_source)
         self.assertIn("setLiveDemoPlaying(false)", page_source)
         self.assertIn("setLiveDemoPlaying(true)", page_source)
+
+    def test_agent_mode_prompt_plan_launch_and_review_are_gated(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "已经检索历史的信息和新闻",
+            "选择并启动",
+            "onStartManagedDelivery(plan.id, plan.title)",
+            "runOrchestratorCommand(`选择${planTitle}方案`, { echoUser: false })",
+            "setLiveDemoIndex(0)",
+            "patch.live_demo",
+            "setLiveDemoPlaying(false)",
+            "newPhase === 'live') {\n            setActiveStage('live');\n            setLiveDemoIndex(0);\n            setLiveDemoPlaying(true);",
+            "Math.min(index + 1, liveDemoFrames.length - 1)",
+            "const liveDemoCompleted",
+            "reviewReady",
+            "在线看板跑完后，盘后迭代会自动生成",
+            "pending_review",
+            "goal?.targetRoas || '3.0'",
+            "goal={goal}",
+        ]:
+            self.assertIn(marker, page_source)
+
+        for removed_marker in [
+            "(index + 1) % liveDemoFrames.length",
+            "批准并启动托管",
+        ]:
+            self.assertNotIn(removed_marker, page_source)
 
     def test_agent_mode_review_owns_lead_assets_and_report_generation(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")

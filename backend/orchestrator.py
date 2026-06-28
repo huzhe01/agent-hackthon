@@ -357,63 +357,6 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
     margin = brief.get("margin", "50%")
     live_window = brief.get("live_window", "20:00-23:00")
     meta_cap = _extract_meta_cap(brief.get("constraints"))
-    steady_meta = min(30, meta_cap) if meta_cap else 30
-    balanced_meta = min(50, meta_cap) if meta_cap else 50
-    aggressive_meta = min(60, meta_cap) if meta_cap else 60
-    steady_tiktok = 100 - steady_meta
-    balanced_tiktok = 100 - balanced_meta
-    aggressive_tiktok = 100 - aggressive_meta
-
-    plan_options = [
-        {
-            "id": "steady",
-            "title": "保守",
-            "lines": [
-                f"TikTok {steady_tiktok}% / Meta {steady_meta}%",
-                "节奏：匀速投放，优先稳定消耗",
-                f"预期 ROAS {target_roas * 0.85:.1f}-{target_roas * 0.95:.1f}",
-                "回撤风险低，增长偏慢",
-            ],
-            "channels_split": {"tiktok": steady_tiktok, "meta": steady_meta},
-            "budget": budget,
-            "expected_roas": f"{target_roas * 0.85:.1f}-{target_roas * 0.95:.1f}",
-            "rhythm": "匀速投放",
-            "risks": "增长偏慢，可能消耗不完预算",
-        },
-        {
-            "id": "balanced",
-            "title": "均衡",
-            "recommended": True,
-            "lines": [
-                f"TikTok {balanced_tiktok}% / Meta {balanced_meta}%",
-                "节奏：前段试探后段加码",
-                f"预期 ROAS {target_roas * 0.95:.1f}-{target_roas * 1.1:.1f}",
-                "风险中等，推荐" if not meta_cap else f"风险中等，Meta 遵守 ≤{meta_cap}% 上限",
-            ],
-            "channels_split": {"tiktok": balanced_tiktok, "meta": balanced_meta},
-            "budget": budget,
-            "expected_roas": f"{target_roas * 0.95:.1f}-{target_roas * 1.1:.1f}",
-            "rhythm": "前段试探后段加码",
-            "risks": "风险中等",
-        },
-        {
-            "id": "aggressive",
-            "title": "进取",
-            "lines": [
-                f"TikTok {aggressive_tiktok}% / Meta {aggressive_meta}%",
-                "节奏：高峰激进抢量",
-                f"预期 ROAS {target_roas * 1.0:.1f}-{target_roas * 1.3:.1f}",
-                "波动较大，可能超 CPA" if not meta_cap else f"受 Meta ≤{meta_cap}% 护栏约束，进取幅度下调",
-            ],
-            "channels_split": {"tiktok": aggressive_tiktok, "meta": aggressive_meta},
-            "budget": budget,
-            "expected_roas": f"{target_roas * 1.0:.1f}-{target_roas * 1.3:.1f}",
-            "rhythm": "高峰激进抢量",
-            "risks": "波动较大，可能超 CPA 约束",
-        },
-    ]
-
-    live_rooms = _generate_live_rooms(budget, channels, products, market, meta_cap)
     plan_versions = _append_plan_version(
         wb.get("plan_versions", []),
         products=products,
@@ -438,46 +381,84 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
     if simulator_status["complete"]:
         version_number = len(plan_versions)
         simulation_bundle = build_simulation_bundle(simulator_brief, version_number=version_number)
-        simulation_bundle["plan_options"] = plan_options
-        simulation_bundle["live_rooms"] = live_rooms
+        plan_options = simulation_bundle.get("plan_options", [])
+        live_rooms = simulation_bundle.get("live_rooms", [])
+    else:
+        plan_options = _fallback_plan_options(budget, target_roas, meta_cap)
+        live_rooms = _generate_live_rooms(budget, channels, products, market, meta_cap)
 
+    project_name = f"{products} · {market.split('/')[0].strip()}直播"
     wb_patch = {
         "phase": "planning",
         "plan_options": plan_options,
         "plan_versions": plan_versions,
         "live_rooms": live_rooms,
         "brief_complete": True,
+        "selected_plan": "",
+        "review_ready": False,
+        "lead_rows": [],
+        "review_benchmarks": [],
+        "review_actions": [],
+        "strategy_notes": [],
+        "fallback_campaigns": [],
         "project": {
-            "name": f"{products} · {market.split('/')[0].strip()}直播",
+            "name": project_name,
         },
     }
     if simulation_bundle:
+        pending_review = simulation_bundle.get("review", {})
         wb_patch.update({
             "product_catalog": simulation_bundle.get("product_catalog", []),
             "live_demo": simulation_bundle.get("live_demo"),
-            "managed_events": simulation_bundle.get("managed_events", []),
-            "lead_rows": simulation_bundle.get("lead_rows", []),
-            "review_benchmarks": simulation_bundle.get("review_benchmarks", []),
-            "review_actions": simulation_bundle.get("review_actions", []),
-            "strategy_notes": simulation_bundle.get("strategy_notes", []),
-            "api_trace": simulation_bundle.get("review", {}).get("api_trace", []),
-            "fallback_campaigns": simulation_bundle.get("fallback_campaigns", []),
+            "managed_events": [],
+            "pending_review": pending_review,
+            "api_trace": [],
         })
 
         repository = create_agent_mode_repository()
         if repository.enabled:
             try:
-                saved = repository.save_generated_plan(simulator_brief, simulation_bundle)
+                simulation_for_save = deepcopy(simulation_bundle)
+                simulation_for_save["review"] = {}
+                simulation_for_save["review_benchmarks"] = []
+                simulation_for_save["review_actions"] = []
+                simulation_for_save["strategy_notes"] = []
+                simulation_for_save["lead_rows"] = []
+                saved = repository.save_generated_plan(simulator_brief, simulation_for_save)
                 persisted = repository.build_workbench(project_id=saved["project"]["id"])
                 wb_patch.update(persisted)
+                wb_patch.update({
+                    "selected_plan": "",
+                    "review_ready": False,
+                    "lead_rows": [],
+                    "review_benchmarks": [],
+                    "review_actions": [],
+                    "strategy_notes": [],
+                    "fallback_campaigns": [],
+                    "managed_events": [],
+                    "pending_review": pending_review,
+                    "api_trace": [],
+                })
             except Exception as exc:
                 wb_patch["persistence_warning"] = f"Supabase 持久化失败：{exc}"
+
+    wb_patch.update(_budget_project_patch_for_generated_plan(
+        wb=wb,
+        wb_patch=wb_patch,
+        project_name=project_name,
+        budget=budget,
+        target_roas=target_roas,
+    ))
     patch_workbench(wb_patch)
 
     events.append({"type": "workbench_patch", "patch": wb_patch})
     events.append({"type": "phase_change", "phase": "planning"})
 
-    agent_event = {"role": "方案规划", "content": "已生成保守、均衡、进取三套方案，请选择或修改。", "agent": True}
+    agent_event = {
+        "role": "方案规划",
+        "content": "已经检索历史的信息和新闻，结合历史投放记录生成保守、均衡、进取三套方案，请选择一种模式启动在线看板。",
+        "agent": True,
+    }
     events.append({"type": "agent_action", "event": agent_event})
     patch_workbench({"left_timeline": read_workbench().get("left_timeline", []) + [agent_event]})
 
@@ -519,13 +500,25 @@ def _handle_confirm_and_launch(arguments: Dict[str, Any]) -> tuple[Dict, list]:
     selected = arguments.get("selected_plan", "balanced")
     guard_limit = arguments.get("guard_limit", 15)
     approval_threshold = arguments.get("approval_threshold", 800)
+    wb = read_workbench()
+    budget_projects = _mark_active_budget_project_running(
+        wb.get("budget_projects", []),
+        wb.get("active_project_id"),
+    )
 
     wb_patch = {
         "phase": "live",
         "selected_plan": selected,
         "guard_limit": str(guard_limit),
         "approval_threshold": str(approval_threshold),
+        "review_ready": False,
+        "lead_rows": [],
+        "review_benchmarks": [],
+        "review_actions": [],
+        "strategy_notes": [],
     }
+    if budget_projects:
+        wb_patch["budget_projects"] = budget_projects
     patch_workbench(wb_patch)
 
     events.append({"type": "workbench_patch", "patch": wb_patch})
@@ -554,6 +547,23 @@ def _handle_confirm_and_launch(arguments: Dict[str, Any]) -> tuple[Dict, list]:
         "approval_threshold": approval_threshold,
         "message": "方案已上线。告知用户已进入直播托管阶段。",
     }, events
+
+
+def _mark_active_budget_project_running(
+    budget_projects: List[Dict[str, Any]],
+    active_project_id: Optional[str],
+) -> List[Dict[str, Any]]:
+    if not budget_projects or not active_project_id:
+        return budget_projects
+    next_projects = []
+    for project in budget_projects:
+        if project.get("id") == active_project_id:
+            updated = dict(project)
+            updated["status"] = "进行中"
+            next_projects.append(updated)
+        else:
+            next_projects.append(project)
+    return next_projects
 
 
 def _handle_switch_view(arguments: Dict[str, Any]) -> tuple[Dict, list]:
@@ -865,6 +875,74 @@ def _generate_live_rooms(budget: float, channels: str, products: str, market: st
     ]
 
 
+def _fallback_plan_options(budget: float, target_roas: float, meta_cap: Optional[int] = None) -> List[Dict[str, Any]]:
+    steady_meta = min(30, meta_cap) if meta_cap else 30
+    balanced_meta = min(50, meta_cap) if meta_cap else 50
+    aggressive_meta = min(60, meta_cap) if meta_cap else 60
+    rows = [
+        ("steady", "保守", 100 - steady_meta, steady_meta, 0.85, 0.95, "匀速投放，优先稳定消耗", "回撤风险低，增长偏慢"),
+        ("balanced", "均衡", 100 - balanced_meta, balanced_meta, 0.95, 1.1, "前段试探后段加码", "风险中等，推荐"),
+        ("aggressive", "进取", 100 - aggressive_meta, aggressive_meta, 1.0, 1.3, "高峰激进抢量", "波动较大，可能超 CPA"),
+    ]
+    return [
+        {
+            "id": plan_id,
+            "title": title,
+            "recommended": plan_id == "balanced",
+            "lines": [
+                f"TikTok {tiktok}% / Meta {meta}%",
+                f"节奏：{rhythm}",
+                f"预期 ROAS {target_roas * low:.1f}-{target_roas * high:.1f}",
+                risk if not meta_cap else f"{risk}，Meta 遵守 ≤{meta_cap}% 上限",
+            ],
+            "channels_split": {"tiktok": tiktok, "meta": meta},
+            "budget": budget,
+            "expected_roas": f"{target_roas * low:.1f}-{target_roas * high:.1f}",
+            "rhythm": rhythm,
+            "risks": risk,
+        }
+        for plan_id, title, tiktok, meta, low, high, rhythm, risk in rows
+    ]
+
+
+def _budget_project_patch_for_generated_plan(
+    *,
+    wb: Dict[str, Any],
+    wb_patch: Dict[str, Any],
+    project_name: str,
+    budget: float,
+    target_roas: float,
+) -> Dict[str, Any]:
+    active_project_id = wb_patch.get("active_project_id") or wb.get("active_project_id") or f"budget-project-{int(time.time() * 1000)}"
+    existing_projects = wb_patch.get("budget_projects")
+    if not isinstance(existing_projects, list):
+        existing_projects = wb.get("budget_projects") or []
+
+    summary = {
+        "id": active_project_id,
+        "name": project_name,
+        "status": "待选择",
+        "budget": f"${budget:,.0f}",
+        "spent": "$0",
+        "roas": f"{target_roas:g}",
+        "updated_at": "刚刚",
+    }
+    updated = False
+    next_projects = []
+    for project in existing_projects:
+        if isinstance(project, dict) and project.get("id") == active_project_id:
+            next_projects.append({**project, **summary})
+            updated = True
+        else:
+            next_projects.append(project)
+    if not updated:
+        next_projects.insert(0, summary)
+    return {
+        "active_project_id": active_project_id,
+        "budget_projects": next_projects,
+    }
+
+
 def _append_plan_version(
     existing_versions: List[Dict[str, Any]],
     *,
@@ -909,6 +987,37 @@ def _extract_meta_cap(text: Any) -> Optional[int]:
     return value if 0 < value <= 100 else None
 
 
+def _extract_channel_mix(text: str) -> Optional[str]:
+    source = text or ""
+    lowered = source.lower()
+    aliases = [
+        ("amazon", "Amazon"),
+        ("facebook", "Facebook"),
+        ("meta", "Meta"),
+        ("google", "Google"),
+        ("tiktok", "TikTok"),
+        ("shopee", "Shopee"),
+    ]
+    found = []
+    for token, label in aliases:
+        pos = lowered.find(token)
+        if pos >= 0:
+            found.append((pos, label))
+    if not found:
+        return None
+
+    labels = [label for _pos, label in sorted(found)]
+    percentages = [int(value) for value in re.findall(r"(\d{1,3})\s*%", source)]
+    if len(percentages) >= len(labels):
+        weights = percentages[:len(labels)]
+        total = sum(weights)
+        if total > 0:
+            normalized = [round(weight * 100 / total) for weight in weights]
+            normalized[-1] += 100 - sum(normalized)
+            return " / ".join(f"{label} {pct}%" for label, pct in zip(labels, normalized))
+    return " + ".join(labels)
+
+
 def _extract_brief_from_text(text: str, workbench: Dict[str, Any]) -> Dict[str, Any]:
     """Small deterministic extractor for common workbench commands."""
     source = text or ""
@@ -937,10 +1046,14 @@ def _extract_brief_from_text(text: str, workbench: Dict[str, Any]) -> Dict[str, 
     if "美国" in source or re.search(r"\bUS\b|\bUSA\b", source, re.I):
         extracted["market"] = "美国 / USD"
 
+    channel_mix = _extract_channel_mix(source)
     meta_cap = _extract_meta_cap(source)
     if meta_cap:
         extracted["constraints"] = f"Meta 最多占 {meta_cap}%"
-        extracted["channels"] = "TikTok + Meta"
+    if meta_cap and (not channel_mix or channel_mix.startswith("Meta")):
+        extracted["channels"] = _effective_brief_fields(workbench).get("channels") or "TikTok + Meta"
+    elif channel_mix:
+        extracted["channels"] = channel_mix
     elif "TikTok" in source and "Meta" in source:
         extracted["channels"] = "TikTok + Meta"
     elif "Meta" in source:
@@ -1240,10 +1353,41 @@ def _match_direct_plan_command(text: str, workbench: Dict[str, Any]) -> Optional
     normalized = (text or "").strip()
     if not normalized:
         return None
+    selected_plan = _match_selected_plan_from_text(normalized, workbench)
+    if selected_plan:
+        return "confirm_and_launch", {"selected_plan": selected_plan}
     wants_plan = "方案" in normalized and any(word in normalized for word in ["生成", "重新", "三套", "规划", "计划"])
-    has_brief_signal = any(word in normalized for word in ["预算", "ROAS", "市场", "商品", "Meta", "TikTok"])
-    if wants_plan or (has_brief_signal and "重新" in normalized):
+    extracted = _extract_brief_from_text(normalized, workbench)
+    merged = {**_effective_brief_fields(workbench), **extracted}
+    has_complete_brief = all(merged.get(field) not in (None, "") for field in CORE_FIELDS)
+    has_brief_signal = any(word.lower() in normalized.lower() for word in ["预算", "ROAS", "市场", "商品", "Meta", "TikTok", "Amazon", "Facebook", "Google"])
+    if wants_plan or has_complete_brief or (has_brief_signal and "重新" in normalized):
         return "extract_and_generate_plans", {"text": normalized}
+    return None
+
+
+def _match_selected_plan_from_text(text: str, workbench: Dict[str, Any]) -> Optional[str]:
+    if not workbench.get("plan_options"):
+        return None
+    if not any(word in text for word in ["选择", "确认", "启动", "上线", "用", "采用"]):
+        return None
+
+    lower_text = text.lower()
+    aliases = {
+        "steady": ["保守", "steady"],
+        "balanced": ["均衡", "balanced", "推荐"],
+        "aggressive": ["进取", "激进", "aggressive"],
+    }
+    available_ids = {
+        plan.get("id")
+        for plan in workbench.get("plan_options", [])
+        if plan.get("id")
+    }
+    for plan_id, keywords in aliases.items():
+        if plan_id not in available_ids:
+            continue
+        if any(keyword in text or keyword in lower_text for keyword in keywords):
+            return plan_id
     return None
 
 

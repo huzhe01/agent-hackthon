@@ -214,6 +214,100 @@ class LiveLoopOrchestratorTest(unittest.TestCase):
         self.assertIn("还缺少", result["message"])
         self.assertIn("投放商品", result["message"])
 
+    def test_complete_prompt_generates_dynamic_channel_plans_without_review_release(self):
+        self.store.write_workbench({
+            "phase": "briefing",
+            "active_project_id": "blank-project-1",
+            "budget_projects": [
+                {"id": "blank-project-1", "name": "新预算项目", "status": "新项目"},
+            ],
+            "brief_fields": {},
+            "project": {},
+            "plan_options": [],
+            "review_benchmarks": [],
+            "review_actions": [],
+            "strategy_notes": [],
+            "lead_rows": [],
+        })
+        text = (
+            "我要给便携榨汁杯做一场美国市场直播，预算 10000 美元，目标 ROAS 5.0，"
+            "投放amazon, facebook, tiktok 三个渠道，预算占比分别是30%，25%，45%。"
+        )
+
+        self.assertEqual(
+            self.orchestrator._match_direct_plan_command(text, self.store.read_workbench()),
+            ("extract_and_generate_plans", {"text": text}),
+        )
+
+        result, events = self.orchestrator._handle_extract_and_generate_plans({"text": text})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["mode"], "generated")
+        self.assertTrue(any(event["type"] == "agent_action" for event in events))
+
+        workbench = self.store.read_workbench()
+        self.assertEqual(workbench["phase"], "planning")
+        self.assertEqual(workbench["selected_plan"], "")
+        self.assertEqual(workbench["brief_fields"]["budget"], 10000)
+        self.assertEqual(workbench["brief_fields"]["target_roas"], 5.0)
+        self.assertEqual(workbench["brief_fields"]["channels"], "Amazon 30% / Facebook 25% / TikTok 45%")
+        self.assertEqual(workbench["project"]["name"], "便携榨汁杯 · 美国直播")
+        self.assertEqual(workbench["budget_projects"][0]["name"], "便携榨汁杯 · 美国直播")
+        self.assertEqual(workbench["budget_projects"][0]["budget"], "$10,000")
+        self.assertEqual(workbench["budget_projects"][0]["status"], "待选择")
+
+        plan_text = "\n".join("\n".join(plan["lines"]) for plan in workbench["plan_options"])
+        self.assertIn("Amazon 30% / Facebook 25% / TikTok 45%", plan_text)
+        self.assertEqual(workbench["review_benchmarks"], [])
+        self.assertEqual(workbench["review_actions"], [])
+        self.assertEqual(workbench["strategy_notes"], [])
+        self.assertEqual(workbench["lead_rows"], [])
+        self.assertIn("pending_review", workbench)
+        self.assertGreater(len(workbench["pending_review"]["benchmarks"]), 0)
+        self.assertEqual(workbench["live_demo"]["frames"][0]["metrics"]["spend"], 0)
+        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 10000)
+        self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed"], "00:00:10")
+        self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed_seconds"], 10)
+
+    def test_selecting_generated_plan_by_text_enters_live_without_review_data(self):
+        self.store.write_workbench({
+            "phase": "planning",
+            "active_project_id": "project-1",
+            "budget_projects": [
+                {"id": "project-1", "name": "便携榨汁杯 · 美国直播", "status": "待选择"},
+            ],
+            "selected_plan": "",
+            "review_ready": False,
+            "review_benchmarks": [],
+            "review_actions": [],
+            "strategy_notes": [],
+            "lead_rows": [],
+            "plan_options": [
+                {"id": "steady", "title": "保守"},
+                {"id": "balanced", "title": "均衡", "recommended": True},
+                {"id": "aggressive", "title": "进取"},
+            ],
+        })
+
+        self.assertEqual(
+            self.orchestrator._match_direct_plan_command("选择均衡方案", self.store.read_workbench()),
+            ("confirm_and_launch", {"selected_plan": "balanced"}),
+        )
+
+        result, events = self.orchestrator._handle_confirm_and_launch({"selected_plan": "balanced"})
+
+        self.assertTrue(result["success"])
+        self.assertTrue(any(event["type"] == "view_switch" and event["view"] == "live" for event in events))
+        workbench = self.store.read_workbench()
+        self.assertEqual(workbench["phase"], "live")
+        self.assertEqual(workbench["selected_plan"], "balanced")
+        self.assertFalse(workbench.get("review_ready"))
+        self.assertEqual(workbench["review_benchmarks"], [])
+        self.assertEqual(workbench["review_actions"], [])
+        self.assertEqual(workbench["strategy_notes"], [])
+        self.assertEqual(workbench["lead_rows"], [])
+        self.assertEqual(workbench["budget_projects"][0]["status"], "进行中")
+
 
 if __name__ == "__main__":
     unittest.main()
