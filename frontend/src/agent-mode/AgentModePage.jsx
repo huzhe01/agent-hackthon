@@ -44,7 +44,7 @@ import { agentModeFallback, fallbackDataSources, fallbackModels } from './agentM
 
 const stageTabs = [
   { id: 'plan', label: '投放方案', icon: Target },
-  { id: 'live', label: '在线看板', icon: Activity },
+  { id: 'live', label: '全托管中心', icon: Activity },
   { id: 'review', label: '盘后迭代', icon: GitCompare },
 ];
 const PLAN_REVEAL_DELAY_MS = 5000;
@@ -1575,7 +1575,7 @@ function ReviewGeneratingCanvas({ focusMode, onToggleFocus }) {
       <div className="flex items-end justify-between">
         <div>
           <h1 className="text-2xl font-semibold text-white">盘后迭代</h1>
-          <p className="mt-2 text-sm text-slate-500">在线看板已结束，正在生成完整复盘。</p>
+          <p className="mt-2 text-sm text-slate-500">全托管中心已结束，正在生成完整复盘。</p>
         </div>
         <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
       </div>
@@ -1626,7 +1626,7 @@ function ReviewJourneyChart({ frames = [] }) {
             <BarChart3 className="h-4 w-4 text-violet-300" />
             投放全过程曲线
           </div>
-          <p className="mt-1 text-xs text-slate-500">按在线看板帧回放收入、消耗与关键托管节点。</p>
+          <p className="mt-1 text-xs text-slate-500">按全托管中心帧回放收入、消耗与关键托管节点。</p>
         </div>
         <div className="flex items-center gap-4 text-xs text-slate-500">
           <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />收入</span>
@@ -1763,7 +1763,7 @@ function ReviewCanvas({
         <div className="flex items-end justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-white">盘后迭代</h1>
-            <p className="mt-2 text-sm text-slate-500">在线看板跑完后，盘后迭代会自动生成。</p>
+            <p className="mt-2 text-sm text-slate-500">全托管中心跑完后，盘后迭代会自动生成。</p>
           </div>
           <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
         </div>
@@ -1775,7 +1775,7 @@ function ReviewCanvas({
             <div>
               <div className="text-lg font-semibold text-white">等待直播托管数据完成</div>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                当前还没有完整的投放过程快照。请先选择投放方案并让在线看板至少完成一轮数据推进，系统才会生成复盘基线、关键动作、线索资产和下一场策略。
+                当前还没有完整的投放过程快照。请先选择投放方案并让全托管中心至少完成一轮数据推进，系统才会生成复盘基线、关键动作、线索资产和下一场策略。
               </p>
             </div>
           </div>
@@ -2740,7 +2740,7 @@ export default function AgentModePage() {
             extract_and_generate_plans: '已经检索历史的信息和新闻，正在结合你的历史投放记录生成不同模式和方案...',
             extract_brief: '正在提取预算、目标、商品、市场和渠道占比...',
             generate_plans: '已经检索历史的信息和新闻，正在生成保守、均衡、进取三套方案...',
-            confirm_and_launch: '正在校验预算护栏并准备启动在线看板...',
+            confirm_and_launch: '正在校验预算护栏并准备启动全托管中心...',
           };
           setChatMessages((c) => c.map((m) =>
             m.id === assistantId && !m.content

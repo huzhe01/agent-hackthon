@@ -29,7 +29,7 @@ class AgentModeFrontendTest(unittest.TestCase):
         for required_text in [
             "MaiDeal工作台",
             "投放方案",
-            "在线看板",
+            "全托管中心",
             "盘后迭代",
             "数据资产",
             "便携榨汁杯",
@@ -368,7 +368,7 @@ class AgentModeFrontendTest(unittest.TestCase):
             "Math.min(index + 1, liveDemoFrames.length - 1)",
             "const liveDemoCompleted",
             "reviewReady",
-            "在线看板跑完后，盘后迭代会自动生成",
+            "全托管中心跑完后，盘后迭代会自动生成",
             "pending_review",
             "goal?.targetRoas || '3.0'",
             "goal={goal}",

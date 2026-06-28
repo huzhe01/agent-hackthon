@@ -457,7 +457,7 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
 
     agent_event = {
         "role": "方案规划",
-        "content": "已经检索历史的信息和新闻，结合历史投放记录生成保守、均衡、进取三套方案，请选择一种模式启动在线看板。",
+        "content": "已经检索历史的信息和新闻，结合历史投放记录生成保守、均衡、进取三套方案，请选择一种模式启动全托管中心。",
         "agent": True,
     }
     events.append({"type": "agent_action", "event": agent_event})
