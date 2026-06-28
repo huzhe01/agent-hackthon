@@ -225,6 +225,18 @@ function getProjectLiveDemoFinalIndex(project = {}) {
   return shouldOpenProjectAtFinalFrame(project) ? getWorkbenchLiveDemoFinalIndex(project.workbench) : 0;
 }
 
+function isTerminalLiveFrame(frame = {}) {
+  const inventoryValue = Number(frame?.metrics?.inventory);
+  const inventoryEnded = Number.isFinite(inventoryValue) && inventoryValue <= 0;
+  const stateText = [
+    frame?.state_label,
+    ...(frame?.steps || []).map((step) => `${step.agent || ''} ${step.status || ''} ${step.summary || ''}`),
+    ...(frame?.events || []).map((event) => `${event.agent || ''} ${event.text || ''}`),
+  ].join(' ');
+
+  return Boolean(inventoryEnded || /终止|结束|耗尽|售罄|复盘|验证回写/.test(stateText));
+}
+
 function isBudgetApprovalAction(action) {
   return /追加|审批|批准/.test(String(action || ''));
 }
@@ -1185,12 +1197,20 @@ function LiveLoopPanel({
   currentLiveFrame,
   acknowledgedAlerts = {},
   onAcknowledgeAlert,
+  reviewReady = false,
 }) {
-  const steps = currentLiveFrame?.steps?.length
+  const sourceSteps = currentLiveFrame?.steps?.length
     ? currentLiveFrame.steps
     : liveLoop?.steps?.length
       ? liveLoop.steps
       : liveLoopStepFallback;
+  const steps = reviewReady
+    ? sourceSteps.map((step) => (
+      step.id === 'verification'
+        ? { ...step, status: 'done', summary: '验证已完成，盘后迭代已生成。' }
+        : step
+    ))
+    : sourceSteps;
   const activeAlert = (currentLiveFrame?.alerts || []).find((alert) => !acknowledgedAlerts[alert.id]);
   const verification = liveLoop?.verification;
 
@@ -1283,6 +1303,7 @@ function LiveCanvas({
   onToggleLiveDemo,
   acknowledgedAlerts,
   onAcknowledgeAlert,
+  reviewReady = false,
   focusMode,
   onToggleFocus,
 }) {
@@ -1382,6 +1403,7 @@ function LiveCanvas({
         currentLiveFrame={currentLiveFrame}
         acknowledgedAlerts={acknowledgedAlerts}
         onAcknowledgeAlert={onAcknowledgeAlert}
+        reviewReady={reviewReady}
       />
 
       <div className="grid grid-cols-2 gap-4">
@@ -1817,6 +1839,7 @@ function MainCanvas(props) {
             onToggleLiveDemo={props.onToggleLiveDemo}
             acknowledgedAlerts={props.acknowledgedAlerts}
             onAcknowledgeAlert={props.onAcknowledgeAlert}
+            reviewReady={props.reviewReady}
             focusMode={props.focusMode}
             onToggleFocus={props.onToggleFocus}
           />
@@ -2253,8 +2276,10 @@ export default function AgentModePage() {
   const liveDemoInterval = currentLiveDemo.tick_interval_ms || 1800;
   const currentLiveFrame = liveDemoFrames[liveDemoIndex] || liveDemoFrames[0] || null;
   const liveDemoCompleted = liveDemoFrames.length > 0 && liveDemoIndex >= liveDemoFrames.length - 1 && phase === 'live';
+  const terminalLiveFrame = phase === 'live' && isTerminalLiveFrame(currentLiveFrame);
+  const reviewReleaseReady = liveDemoCompleted || (terminalLiveFrame && Boolean(wb.pending_review));
   const reviewReady = Boolean(wb.review_ready || currentReviewActions.length || currentStrategyNotes.length || currentLeadRows.length);
-  const rosterReviewReady = Boolean(wb.review_ready);
+  const rosterReviewReady = Boolean(wb.review_ready || reviewReleaseReady);
   const derivedAgentRoster = useMemo(
     () => deriveAgentRosterStatuses(currentAgentRoster, {
       phase,
@@ -2296,7 +2321,7 @@ export default function AgentModePage() {
 
   useEffect(() => {
     const pendingReview = wb.pending_review;
-    if (!liveDemoCompleted || wb.review_ready || !pendingReview) return;
+    if (!reviewReleaseReady || wb.review_ready || !pendingReview) return;
     const reviewPatch = {
       review_ready: true,
       review_benchmarks: pendingReview.benchmarks || [],
@@ -2311,7 +2336,7 @@ export default function AgentModePage() {
     };
     dispatch({ type: 'WORKBENCH_PATCH', patch });
     api.updateAgentModeWorkbench(patch).catch(() => {});
-  }, [liveDemoCompleted, wb.pending_review, wb.review_ready]);
+  }, [reviewReleaseReady, wb.pending_review, wb.review_ready]);
 
   const selectedRoom = useMemo(
     () => currentLiveRooms.find((r) => r.id === selectedRoomId) || currentLiveRooms[1] || currentLiveRooms[0] || {},
@@ -2619,6 +2644,7 @@ export default function AgentModePage() {
     metrics,
     totalBudget,
     usedBudget,
+    reviewReady,
     phase,
     briefFields,
   };

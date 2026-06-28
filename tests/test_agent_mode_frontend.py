@@ -381,6 +381,29 @@ class AgentModeFrontendTest(unittest.TestCase):
         ]:
             self.assertNotIn(removed_marker, page_source)
 
+    def test_agent_mode_terminal_live_state_releases_review_canvas(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        live_render_source = page_source[
+            page_source.index("props.activeStage === 'live'"):
+            page_source.index("props.activeStage === 'review'")
+        ]
+        canvas_props_source = page_source[
+            page_source.index("const canvasProps = {"):
+            page_source.index("const themeClass")
+        ]
+
+        for marker in [
+            "isTerminalLiveFrame",
+            "reviewReleaseReady",
+            "terminalLiveFrame",
+            "reviewReady={reviewReady}",
+            "验证已完成，盘后迭代已生成",
+        ]:
+            self.assertIn(marker, page_source)
+
+        self.assertIn("reviewReady={props.reviewReady}", live_render_source)
+        self.assertIn("reviewReady,", canvas_props_source)
+
     def test_agent_mode_review_owns_lead_assets_and_report_generation(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 
