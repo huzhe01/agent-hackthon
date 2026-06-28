@@ -48,7 +48,7 @@ const stageTabs = [
   { id: 'review', label: '盘后迭代', icon: GitCompare },
 ];
 const PLAN_REVEAL_DELAY_MS = 5000;
-const REVIEW_REVEAL_DELAY_MS = 5000;
+const REVIEW_REVEAL_DELAY_MS = 15000;
 
 function formatMoney(value, currency = '$') {
   const number = Number(value || 0);
@@ -754,7 +754,7 @@ function deriveAgentRosterStatuses(agentRoster = [], {
 } = {}) {
   const planGenerated = phase === 'planning' || phase === 'live' || phase === 'review' || hasPlanOptions;
   const liveRunning = phase === 'live';
-  const reviewFinished = reviewReady || phase === 'review';
+  const reviewFinished = reviewReady;
   const reviewDoneStatus = { status: '完成' };
   const statusByAgent = {};
 
@@ -1688,6 +1688,8 @@ function ReviewCanvas({
   leadRows = [],
   reviewReady = false,
   reviewRevealPending = false,
+  canGenerateReview = false,
+  onGenerateReview,
   liveDemoFrames = [],
   goal = {},
   totalBudget = 0,
@@ -1763,7 +1765,7 @@ function ReviewCanvas({
         <div className="flex items-end justify-between">
           <div>
             <h1 className="text-2xl font-semibold text-white">盘后迭代</h1>
-            <p className="mt-2 text-sm text-slate-500">全托管中心跑完后，盘后迭代会自动生成。</p>
+            <p className="mt-2 text-sm text-slate-500">全托管中心跑完后，点击盘后迭代后生成复盘。</p>
           </div>
           <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
         </div>
@@ -1772,11 +1774,25 @@ function ReviewCanvas({
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600">
               <GitCompare className="h-5 w-5" />
             </div>
-            <div>
-              <div className="text-lg font-semibold text-white">等待直播托管数据完成</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-lg font-semibold text-white">
+                {canGenerateReview ? '准备生成盘后迭代' : '等待全托管中心完成'}
+              </div>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                当前还没有完整的投放过程快照。请先选择投放方案并让全托管中心至少完成一轮数据推进，系统才会生成复盘基线、关键动作、线索资产和下一场策略。
+                {canGenerateReview
+                  ? '已拿到完整投放过程快照。点击生成后会等待 15 秒，模拟调度中心汇总 API、预算池、SKU、线索资产和关键动作，再展示复盘结果。'
+                  : '当前还没有完整的投放过程快照。请先选择投放方案并让全托管中心跑完整个 timeframe，系统才会生成复盘基线、关键动作、线索资产和下一场策略。'}
               </p>
+              {canGenerateReview && (
+                <button
+                  type="button"
+                  onClick={onGenerateReview}
+                  className="mt-5 inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-4 text-sm font-semibold text-white"
+                >
+                  <Loader2 className="h-4 w-4" />
+                  生成盘后迭代
+                </button>
+              )}
             </div>
           </div>
         </GlassCard>
@@ -2014,6 +2030,8 @@ function MainCanvas(props) {
             leadRows={props.leadRows}
             reviewReady={props.reviewReady}
             reviewRevealPending={props.reviewRevealPending}
+            canGenerateReview={props.reviewReleaseReady}
+            onGenerateReview={props.onGenerateReview}
             liveDemoFrames={props.liveDemoFrames}
             goal={props.goal}
             totalBudget={props.totalBudget}
@@ -2493,7 +2511,7 @@ export default function AgentModePage() {
   const terminalLiveFrame = phase === 'live' && isTerminalLiveFrame(currentLiveFrame);
   const reviewReleaseReady = liveDemoCompleted || (terminalLiveFrame && Boolean(wb.pending_review));
   const reviewReady = Boolean(wb.review_ready || currentReviewActions.length || currentStrategyNotes.length || currentLeadRows.length);
-  const rosterReviewReady = Boolean(wb.review_ready || reviewReleaseReady);
+  const rosterReviewReady = Boolean(reviewReady);
   const derivedAgentRoster = useMemo(
     () => deriveAgentRosterStatuses(currentAgentRoster, {
       phase,
@@ -2511,6 +2529,37 @@ export default function AgentModePage() {
     () => liveDemoFrames.slice(0, liveDemoIndex + 1).flatMap((frame) => frame.events || []).slice(-8),
     [liveDemoFrames, liveDemoIndex],
   );
+
+  const buildReviewRevealPatch = useCallback(() => {
+    const pendingReview = wb.pending_review;
+    if (!reviewReleaseReady || wb.review_ready || !pendingReview || reviewRevealPatchRef.current) return null;
+    const reviewPatch = {
+      review_ready: true,
+      review_benchmarks: pendingReview.benchmarks || [],
+      review_actions: pendingReview.key_actions || [],
+      strategy_notes: pendingReview.strategy_notes || [],
+      lead_rows: pendingReview.lead_assets || [],
+      api_trace: pendingReview.api_trace || [],
+    };
+    return {
+      ...reviewPatch,
+      budget_projects: finalizeActiveBudgetProjectSnapshot(wb, reviewPatch),
+    };
+  }, [reviewReleaseReady, wb]);
+
+  const maybeStartReviewReveal = useCallback(() => {
+    const patch = buildReviewRevealPatch();
+    if (!patch) return false;
+    startReviewRevealDelay(patch);
+    return true;
+  }, [buildReviewRevealPatch, startReviewRevealDelay]);
+
+  const handleStageChange = useCallback((nextStage) => {
+    setActiveStage(nextStage);
+    if (nextStage === 'review') {
+      maybeStartReviewReveal();
+    }
+  }, [maybeStartReviewReveal]);
 
   useEffect(() => {
     if (activeStage === 'live' && liveDemoPlaying && currentActiveAlert) {
@@ -2532,24 +2581,6 @@ export default function AgentModePage() {
       setLiveDemoPlaying(false);
     }
   }, [activeStage, liveDemoPlaying, liveDemoFrames.length, liveDemoIndex]);
-
-  useEffect(() => {
-    const pendingReview = wb.pending_review;
-    if (!reviewReleaseReady || wb.review_ready || !pendingReview || reviewRevealPatchRef.current) return;
-    const reviewPatch = {
-      review_ready: true,
-      review_benchmarks: pendingReview.benchmarks || [],
-      review_actions: pendingReview.key_actions || [],
-      strategy_notes: pendingReview.strategy_notes || [],
-      lead_rows: pendingReview.lead_assets || [],
-      api_trace: pendingReview.api_trace || [],
-    };
-    const patch = {
-      ...reviewPatch,
-      budget_projects: finalizeActiveBudgetProjectSnapshot(wb, reviewPatch),
-    };
-    startReviewRevealDelay(patch);
-  }, [reviewReleaseReady, wb.pending_review, wb.review_ready, startReviewRevealDelay]);
 
   useEffect(() => {
     if (reviewRevealPending) {
@@ -2766,7 +2797,7 @@ export default function AgentModePage() {
           }
         },
         onViewSwitch: (view) => {
-          setActiveStage(view);
+          handleStageChange(view);
         },
         onPhaseChange: (newPhase) => {
           dispatch({ type: 'PHASE_CHANGE', phase: newPhase });
@@ -2852,7 +2883,7 @@ export default function AgentModePage() {
 
   const canvasProps = {
     activeStage,
-    setActiveStage,
+    setActiveStage: handleStageChange,
     focusMode,
     onToggleFocus: () => setFocusMode((c) => !c),
     goal,
@@ -2889,6 +2920,8 @@ export default function AgentModePage() {
     usedBudget,
     reviewReady,
     reviewRevealPending,
+    reviewReleaseReady,
+    onGenerateReview: maybeStartReviewReveal,
     phase,
     briefFields,
   };
@@ -2898,7 +2931,7 @@ export default function AgentModePage() {
     <div className={`agent-mode-shell ${themeClass} h-screen overflow-hidden bg-[#070b13] text-slate-100`}>
       <TopBar
         activeStage={activeStage}
-        setActiveStage={setActiveStage}
+        setActiveStage={handleStageChange}
         totalBudget={totalBudget}
         usedBudget={usedBudget}
         theme={theme}

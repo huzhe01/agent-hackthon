@@ -345,7 +345,7 @@ class AgentModeFrontendTest(unittest.TestCase):
             "方案已生成",
             "投放执行",
             "liveDemoCompleted ? '完成' : '执行中'",
-            "reviewReady || phase === 'review'",
+            "const reviewFinished = reviewReady",
             "效果分析",
             "经营信号",
             "status: '完成'",
@@ -368,7 +368,9 @@ class AgentModeFrontendTest(unittest.TestCase):
             "Math.min(index + 1, liveDemoFrames.length - 1)",
             "const liveDemoCompleted",
             "reviewReady",
-            "全托管中心跑完后，盘后迭代会自动生成",
+            "点击盘后迭代后生成复盘",
+            "handleStageChange",
+            "maybeStartReviewReveal",
             "pending_review",
             "goal?.targetRoas || '3.0'",
             "goal={goal}",
@@ -378,6 +380,7 @@ class AgentModeFrontendTest(unittest.TestCase):
         for removed_marker in [
             "(index + 1) % liveDemoFrames.length",
             "批准并启动托管",
+            "全托管中心跑完后，盘后迭代会自动生成",
         ]:
             self.assertNotIn(removed_marker, page_source)
 
@@ -445,18 +448,26 @@ class AgentModeFrontendTest(unittest.TestCase):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 
         for marker in [
-            "const REVIEW_REVEAL_DELAY_MS = 5000",
+            "const REVIEW_REVEAL_DELAY_MS = 15000",
             "function ReviewGeneratingCanvas",
             "reviewRevealPending",
             "startReviewRevealDelay",
+            "maybeStartReviewReveal",
+            "handleStageChange",
             "ReviewJourneyChart",
             "AI 正在生成盘后迭代",
             "投放全过程曲线",
             "liveDemoFrames={props.liveDemoFrames}",
             "liveDemoFrames={liveDemoFrames}",
             "window.setTimeout(() => setReviewRevealPending(false), REVIEW_REVEAL_DELAY_MS)",
+            "点击盘后迭代后生成复盘",
+            "onGenerateReview={props.onGenerateReview}",
+            "onGenerateReview: maybeStartReviewReveal",
         ]:
             self.assertIn(marker, page_source)
+
+        auto_release_source = "useEffect(() => {\n    const pendingReview = wb.pending_review;"
+        self.assertNotIn(auto_release_source, page_source)
 
         review_render_source = page_source[
             page_source.index("return (\n    <div className=\"mx-auto flex max-w-6xl flex-col gap-5\">", page_source.index("function ReviewCanvas")):
