@@ -5,6 +5,8 @@
 Thumbs.db
 
 # Python / Backend
+**/__pycache__/
+*.py[cod]
 backend/__pycache__/
 backend/*.py[cod]
 backend/*$py.class
@@ -16,6 +18,7 @@ backend/.env.*
 !backend/.env.example
 backend/*.log
 backend/local_data/
+backend/data/
 
 # Node / Frontend
 frontend/node_modules/

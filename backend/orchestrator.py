@@ -343,7 +343,7 @@ def _handle_extract_brief(arguments: Dict[str, Any]) -> tuple[Dict, list]:
     return result, events
 
 
-def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
+def _handle_generate_plans(arguments: Dict[str, Any], tenant_key: Optional[str] = None) -> tuple[Dict, list]:
     """Generate 3 plans and attach a persisted simulation snapshot when possible."""
     events = []
     wb = read_workbench()
@@ -416,7 +416,7 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
             "api_trace": [],
         })
 
-        repository = create_agent_mode_repository()
+        repository = create_agent_mode_repository(tenant_key=tenant_key)
         if repository.enabled:
             try:
                 simulation_for_save = deepcopy(simulation_bundle)
@@ -576,7 +576,7 @@ def _handle_switch_view(arguments: Dict[str, Any]) -> tuple[Dict, list]:
     )
 
 
-def _handle_extract_and_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
+def _handle_extract_and_generate_plans(arguments: Dict[str, Any], tenant_key: Optional[str] = None) -> tuple[Dict, list]:
     """Deterministically update brief fields and generate plans when possible."""
     text = arguments.get("text") or ""
     wb = read_workbench()
@@ -603,7 +603,7 @@ def _handle_extract_and_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict,
     if completion.get("complete"):
         plan_result, plan_events = _handle_generate_plans({
             "brief_summary": _brief_summary(read_workbench()),
-        })
+        }, tenant_key=tenant_key)
         events.extend(plan_events)
         return {
             "success": True,
@@ -813,6 +813,17 @@ for _agent_tool_schema in get_agent_tool_schemas():
     TOOL_HANDLERS[_agent_tool_name] = (
         lambda arguments, tool_name=_agent_tool_name: _handle_registered_agent_tool(arguments, tool_name)
     )
+
+
+def _call_tool_handler(tool_name: str, tool_args: Dict[str, Any], tenant_key: Optional[str] = None) -> tuple[Dict, list]:
+    if tool_name == "generate_plans":
+        return _handle_generate_plans(tool_args, tenant_key=tenant_key)
+    if tool_name == "extract_and_generate_plans":
+        return _handle_extract_and_generate_plans(tool_args, tenant_key=tenant_key)
+    handler = TOOL_HANDLERS.get(tool_name)
+    if not handler:
+        return {"success": False, "error": f"未知工具: {tool_name}"}, []
+    return handler(tool_args)
 
 
 # ---------------------------------------------------------------------------
@@ -1401,7 +1412,7 @@ def _match_selected_plan_from_text(text: str, workbench: Dict[str, Any]) -> Opti
 # Main orchestrator chat (SSE generator)
 # ---------------------------------------------------------------------------
 
-async def orchestrator_chat(messages: List[Dict], workbench: Dict) -> AsyncGenerator[str, None]:
+async def orchestrator_chat(messages: List[Dict], workbench: Dict, tenant_key: Optional[str] = None) -> AsyncGenerator[str, None]:
     """Main entry. Yields SSE event strings."""
     latest_user_text = _latest_user_text(messages)
     direct_command = (
@@ -1412,13 +1423,9 @@ async def orchestrator_chat(messages: List[Dict], workbench: Dict) -> AsyncGener
         tool_name, tool_args = direct_command
         yield _sse({"type": "model", "model": "orchestrator-state-machine"})
         yield _sse({"type": "tool_call", "tool": tool_name, "arguments": tool_args})
-        handler = TOOL_HANDLERS.get(tool_name)
-        if handler:
-            tool_result, extra_events = handler(tool_args)
-            for ev in extra_events:
-                yield _sse(ev)
-        else:
-            tool_result = {"success": False, "error": f"未知工具: {tool_name}"}
+        tool_result, extra_events = _call_tool_handler(tool_name, tool_args, tenant_key=tenant_key)
+        for ev in extra_events:
+            yield _sse(ev)
         yield _sse({"type": "tool_result", "tool": tool_name, "result": tool_result})
         if tool_result.get("success"):
             yield _sse({"type": "content", "content": tool_result.get("message", "已完成。")})
@@ -1493,13 +1500,9 @@ async def orchestrator_chat(messages: List[Dict], workbench: Dict) -> AsyncGener
 
             yield _sse({"type": "tool_call", "tool": tool_name, "arguments": tool_args})
 
-            handler = TOOL_HANDLERS.get(tool_name)
-            if handler:
-                tool_result, extra_events = handler(tool_args)
-                for ev in extra_events:
-                    yield _sse(ev)
-            else:
-                tool_result = {"success": False, "error": f"未知工具: {tool_name}"}
+            tool_result, extra_events = _call_tool_handler(tool_name, tool_args, tenant_key=tenant_key)
+            for ev in extra_events:
+                yield _sse(ev)
 
             yield _sse({"type": "tool_result", "tool": tool_name, "result": tool_result})
             tool_results_this_round.append((tool_name, tool_result))
@@ -1517,7 +1520,7 @@ async def orchestrator_chat(messages: List[Dict], workbench: Dict) -> AsyncGener
             if completion.get("complete"):
                 gen_args = {"brief_summary": _brief_summary(read_workbench())}
                 yield _sse({"type": "tool_call", "tool": "generate_plans", "arguments": gen_args})
-                gen_result, gen_events = _handle_generate_plans(gen_args)
+                gen_result, gen_events = _handle_generate_plans(gen_args, tenant_key=tenant_key)
                 for ev in gen_events:
                     yield _sse(ev)
                 yield _sse({"type": "tool_result", "tool": "generate_plans", "result": gen_result})

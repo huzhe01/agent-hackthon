@@ -63,6 +63,29 @@ class AgentModeFrontendTest(unittest.TestCase):
         for state_name in ["leftCollapsed", "rightCollapsed", "focusMode"]:
             self.assertIn(state_name, page_source)
 
+    def test_agent_mode_has_admin_login_and_tenant_scoped_history(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+        api_source = (ROOT / "frontend/src/services/api.js").read_text(encoding="utf-8")
+
+        for marker in [
+            "maideal_agent_session",
+            "authSession",
+            "LoginScreen",
+            "admin",
+            "退出登录",
+            "tenant_key",
+        ]:
+            self.assertIn(marker, page_source)
+
+        for api_marker in [
+            "loginAgentMode",
+            "/api/auth/login",
+            "tenant_key",
+            "getAgentModeWorkbench(projectId, session",
+            "chatWithOrchestrator(",
+        ]:
+            self.assertIn(api_marker, api_source)
+
     def test_agent_mode_business_seed_data_is_not_hardcoded_in_page(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
         defaults_source = ROOT / "frontend/src/agent-mode/agentModeDefaults.js"
@@ -330,7 +353,7 @@ class AgentModeFrontendTest(unittest.TestCase):
             "buildBudgetApprovalPatch",
             "isBudgetApprovalAction",
             "approved_budget_amount",
-            "api.updateAgentModeWorkbench(nextPatch)",
+            "api.updateAgentModeWorkbench(nextPatch, authSession)",
             "预算审批已写入",
         ]:
             self.assertIn(marker, page_source)

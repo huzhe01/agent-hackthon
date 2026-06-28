@@ -49,6 +49,28 @@ const stageTabs = [
 ];
 const PLAN_REVEAL_DELAY_MS = 5000;
 const REVIEW_REVEAL_DELAY_MS = 15000;
+const AGENT_MODE_SESSION_STORAGE_KEY = 'maideal_agent_session';
+const DEFAULT_LOGIN_USERNAME = 'admin';
+const DEFAULT_LOGIN_PASSWORD = 'admin';
+
+function loadStoredAgentSession() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(AGENT_MODE_SESSION_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveAgentSession(session) {
+  if (typeof window === 'undefined') return;
+  if (!session) {
+    window.localStorage.removeItem(AGENT_MODE_SESSION_STORAGE_KEY);
+    return;
+  }
+  window.localStorage.setItem(AGENT_MODE_SESSION_STORAGE_KEY, JSON.stringify(session));
+}
 
 function formatMoney(value, currency = '$') {
   const number = Number(value || 0);
@@ -568,7 +590,70 @@ function StageTabs({ activeStage, setActiveStage }) {
   );
 }
 
-function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, setTheme, liveElapsed = '00:00:00' }) {
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState(DEFAULT_LOGIN_USERNAME);
+  const [password, setPassword] = useState(DEFAULT_LOGIN_PASSWORD);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (event) => {
+    event.preventDefault();
+    if (loading) return;
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.loginAgentMode(username, password);
+      onLogin?.(response);
+    } catch {
+      setError('用户名或密码错误');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="agent-mode-shell agent-mode-light flex min-h-screen items-center justify-center bg-slate-50 px-4 text-slate-950">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-xl border border-slate-200 bg-white p-6 shadow-xl shadow-slate-200/60">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-blue-600 text-base font-black text-white">麦</div>
+          <div>
+            <div className="text-lg font-semibold">MaiDeal工作台</div>
+            <div className="mt-1 text-xs text-slate-500">默认账号 admin / admin</div>
+          </div>
+        </div>
+        <label className="mt-6 block text-sm font-semibold text-slate-700">
+          用户名
+          <input
+            value={username}
+            onChange={(event) => setUsername(event.target.value)}
+            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-violet-400 focus:bg-white"
+            autoComplete="username"
+          />
+        </label>
+        <label className="mt-4 block text-sm font-semibold text-slate-700">
+          密码
+          <input
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            type="password"
+            className="mt-2 h-11 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm outline-none focus:border-violet-400 focus:bg-white"
+            autoComplete="current-password"
+          />
+        </label>
+        {error && <div className="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-600">{error}</div>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="mt-5 h-11 w-full rounded-lg bg-violet-600 text-sm font-semibold text-white hover:bg-violet-500 disabled:cursor-not-allowed disabled:bg-slate-300"
+        >
+          {loading ? '登录中...' : '登录并查看历史记录'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, setTheme, liveElapsed = '00:00:00', authSession, onLogout }) {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/10 bg-[#0d1320] px-5">
       <div className="flex min-w-0 items-center gap-3">
@@ -582,6 +667,12 @@ function TopBar({ activeStage, setActiveStage, totalBudget, usedBudget, theme, s
       <StageTabs activeStage={activeStage} setActiveStage={setActiveStage} />
 
       <div className="flex items-center gap-4 text-xs">
+        <div className="hidden items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-slate-400 md:flex">
+          <span>{authSession?.user?.display_name || authSession?.user?.username || 'admin'}</span>
+          <button type="button" onClick={onLogout} className="font-semibold text-violet-300 hover:text-violet-200">
+            退出登录
+          </button>
+        </div>
         <div className="flex items-center gap-2 text-slate-400">
           <StatusDot tone="emerald" />
           <span>直播中 · {liveElapsed}</span>
@@ -1695,6 +1786,7 @@ function ReviewCanvas({
   totalBudget = 0,
   usedBudget = 0,
   currentLiveFrame,
+  authSession,
   focusMode,
   onToggleFocus,
 }) {
@@ -1752,6 +1844,7 @@ function ReviewCanvas({
             setReviewReportStreaming(false);
           },
         },
+        { session: authSession },
       );
     } catch (error) {
       setReviewReportError(error?.message || '复盘报告生成失败');
@@ -2037,6 +2130,7 @@ function MainCanvas(props) {
             totalBudget={props.totalBudget}
             usedBudget={props.usedBudget}
             currentLiveFrame={props.currentLiveFrame}
+            authSession={props.authSession}
             focusMode={props.focusMode}
             onToggleFocus={props.onToggleFocus}
           />
@@ -2355,6 +2449,7 @@ function RightPanel({
 export default function AgentModePage() {
   const [wb, dispatch] = useReducer(workbenchReducer, agentModeFallback, mergeWorkbench);
 
+  const [authSession, setAuthSession] = useState(() => loadStoredAgentSession());
   const [activeStage, setActiveStage] = useState('plan');
   const [leftCollapsed, setLeftCollapsed] = useState(false);
   const [rightCollapsed, setRightCollapsed] = useState(false);
@@ -2451,9 +2546,10 @@ export default function AgentModePage() {
     }
 
     async function loadBusinessData() {
+      if (!authSession) return;
       try {
         const [workbenchResponse, metricsResponse, trendResponse, campaignsResponse] = await Promise.all([
-          api.getAgentModeWorkbench(),
+          api.getAgentModeWorkbench(undefined, authSession),
           api.getRealtimeMetrics(),
           api.getMetricsTrend(24),
           api.getCampaigns(),
@@ -2478,7 +2574,7 @@ export default function AgentModePage() {
 
     loadConfig();
     loadBusinessData();
-  }, []);
+  }, [authSession]);
 
   useEffect(() => () => {
     if (planRevealTimerRef.current) {
@@ -2593,8 +2689,8 @@ export default function AgentModePage() {
     reviewRevealPatchRef.current = null;
     reviewRevealTimerRef.current = null;
     dispatch({ type: 'WORKBENCH_PATCH', patch });
-    api.updateAgentModeWorkbench(patch).catch(() => {});
-  }, [reviewRevealPending]);
+    api.updateAgentModeWorkbench(patch, authSession).catch(() => {});
+  }, [authSession, reviewRevealPending]);
 
   const selectedRoom = useMemo(
     () => currentLiveRooms.find((r) => r.id === selectedRoomId) || currentLiveRooms[1] || currentLiveRooms[0] || {},
@@ -2624,7 +2720,7 @@ export default function AgentModePage() {
 
   const onReset = async () => {
     try {
-      const response = await api.resetWorkbench();
+      const response = await api.resetWorkbench(authSession);
       dispatch({ type: 'INIT', workbench: response.workbench });
       setActiveStage('plan');
       approvalPauseRef.current = false;
@@ -2665,7 +2761,7 @@ export default function AgentModePage() {
       },
     ]);
 
-    api.getAgentModeWorkbench(projectId)
+    api.getAgentModeWorkbench(projectId, authSession)
       .then((response) => {
         if (response?.active_project_id === projectId) {
           const responseProject = { ...selectedProject, workbench: response };
@@ -2679,8 +2775,8 @@ export default function AgentModePage() {
     api.updateAgentModeWorkbench({
       ...(selectedProject.workbench || {}),
       active_project_id: projectId,
-    }).catch(() => {});
-  }, [currentBudgetProjects]);
+    }, authSession).catch(() => {});
+  }, [authSession, currentBudgetProjects, stopPlanRevealDelay, stopReviewRevealDelay]);
 
   const onCreateBudgetProject = useCallback(() => {
     const newProject = createBlankBudgetProject((currentBudgetProjects || []).length + 1);
@@ -2708,8 +2804,8 @@ export default function AgentModePage() {
       },
     ]);
 
-    api.updateAgentModeWorkbench(nextWorkbench).catch(() => {});
-  }, [currentBudgetProjects, wb.layout]);
+    api.updateAgentModeWorkbench(nextWorkbench, authSession).catch(() => {});
+  }, [authSession, currentBudgetProjects, stopPlanRevealDelay, stopReviewRevealDelay, wb.layout]);
 
   const createResizePointerDown = (side) => (event) => {
     event.preventDefault();
@@ -2829,7 +2925,7 @@ export default function AgentModePage() {
           ));
           setIsStreaming(false);
         },
-      });
+      }, { session: authSession });
     } catch (error) {
       const message = error?.message || 'Orchestrator 请求失败';
       setChatMessages((c) => c.map((m) =>
@@ -2862,7 +2958,7 @@ export default function AgentModePage() {
         totalBudget,
       });
       dispatch({ type: 'WORKBENCH_PATCH', patch: nextPatch });
-      api.updateAgentModeWorkbench(nextPatch).catch(() => {});
+      api.updateAgentModeWorkbench(nextPatch, authSession).catch(() => {});
     }
     setAcknowledgedAlerts((current) => ({ ...current, [alertId]: action || true }));
     if (approvalPauseRef.current && activeStage === 'live') {
@@ -2879,7 +2975,7 @@ export default function AgentModePage() {
           : `已记录你的选择：${action}。系统会继续按直播实时数据推进预算托管。`,
       },
     ]);
-  }, [activeStage, currentLiveDemo, currentLiveFrame, liveDemoIndex, totalBudget, wb]);
+  }, [activeStage, authSession, currentLiveDemo, currentLiveFrame, liveDemoIndex, totalBudget, wb]);
 
   const canvasProps = {
     activeStage,
@@ -2918,6 +3014,7 @@ export default function AgentModePage() {
     metrics,
     totalBudget,
     usedBudget,
+    authSession,
     reviewReady,
     reviewRevealPending,
     reviewReleaseReady,
@@ -2926,6 +3023,29 @@ export default function AgentModePage() {
     briefFields,
   };
   const themeClass = theme === 'light' ? 'agent-mode-light' : 'agent-mode-dark';
+
+  const handleLogin = useCallback((response) => {
+    const session = {
+      user: response?.user,
+      tenant_key: response?.user?.tenant_key,
+      logged_in_at: new Date().toISOString(),
+    };
+    saveAgentSession(session);
+    setAuthSession(session);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    saveAgentSession(null);
+    setAuthSession(null);
+    setChatMessages([{ id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome }]);
+    dispatch({ type: 'RESET' });
+    setLiveDemoIndex(0);
+    setLiveDemoPlaying(false);
+  }, []);
+
+  if (!authSession?.user?.tenant_key) {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
 
   return (
     <div className={`agent-mode-shell ${themeClass} h-screen overflow-hidden bg-[#070b13] text-slate-100`}>
@@ -2937,6 +3057,8 @@ export default function AgentModePage() {
         theme={theme}
         setTheme={setTheme}
         liveElapsed={currentLiveFrame?.elapsed || '00:00:00'}
+        authSession={authSession}
+        onLogout={handleLogout}
       />
       <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
         {!focusMode && (

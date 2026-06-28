@@ -35,6 +35,29 @@ async function request(endpoint, options = {}) {
     }
 }
 
+function tenantKeyFromSession(session) {
+    return session?.user?.tenant_key || session?.tenant_key || '';
+}
+
+function withTenantQuery(baseParams = {}, session) {
+    const params = new URLSearchParams(baseParams);
+    const tenantKey = tenantKeyFromSession(session);
+    if (tenantKey) {
+        params.set('tenant_key', tenantKey);
+    }
+    const queryString = params.toString();
+    return queryString ? `?${queryString}` : '';
+}
+
+// ==================== 登录 API ====================
+
+export async function loginAgentMode(username, password) {
+    return request('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ username, password }),
+    });
+}
+
 // ==================== 广告计划 API ====================
 
 /**
@@ -112,16 +135,16 @@ export async function getMetricsTrend(hours = 24) {
 /**
  * 获取 Agent Mode 直播托管工作台数据
  */
-export async function getAgentModeWorkbench(projectId) {
-    const queryString = projectId ? `?${new URLSearchParams({ project_id: projectId }).toString()}` : '';
+export async function getAgentModeWorkbench(projectId, session) {
+    const queryString = withTenantQuery(projectId ? { project_id: projectId } : {}, session);
     return request(`/api/agent-mode/workbench${queryString}`);
 }
 
 /**
  * 更新 Agent Mode 直播托管工作台数据
  */
-export async function updateAgentModeWorkbench(data) {
-    return request('/api/agent-mode/workbench', {
+export async function updateAgentModeWorkbench(data, session) {
+    return request(`/api/agent-mode/workbench${withTenantQuery({}, session)}`, {
         method: 'PUT',
         body: JSON.stringify(data),
     });
@@ -274,6 +297,7 @@ export async function chatWithOrchestrator(
     messages,
     { onMessage, onToolCall, onToolResult, onError, onDone, onModel,
       onWorkbenchPatch, onViewSwitch, onPhaseChange, onAgentAction } = {},
+    options = {},
 ) {
     const url = `${API_BASE_URL}/api/orchestrator/chat`;
 
@@ -281,7 +305,11 @@ export async function chatWithOrchestrator(
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ messages, enable_tools: true }),
+            body: JSON.stringify({
+                messages,
+                enable_tools: true,
+                tenant_key: tenantKeyFromSession(options.session),
+            }),
         });
 
         if (!response.ok) {
@@ -348,12 +376,12 @@ export async function chatWithOrchestrator(
     }
 }
 
-export async function resetWorkbench() {
-    return request('/api/workbench/reset', { method: 'POST' });
+export async function resetWorkbench(session) {
+    return request(`/api/workbench/reset${withTenantQuery({}, session)}`, { method: 'POST' });
 }
 
-export async function getWorkbenchState() {
-    return request('/api/workbench/state');
+export async function getWorkbenchState(session) {
+    return request(`/api/workbench/state${withTenantQuery({}, session)}`);
 }
 
 // ==================== 健康检查 ====================

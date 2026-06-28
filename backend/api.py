@@ -31,12 +31,14 @@ from dotenv import load_dotenv
 try:
     from agent_mode_store import read_workbench, write_workbench, reset_workbench
     from agent_mode_repository import create_agent_mode_repository
+    from agent_auth import authenticate_user, sanitize_tenant_key
     from orchestrator import orchestrator_chat
     from agent.registry import dispatch_agent_tool, get_agent_tool_schemas
     from agent.runtime_runner import run_agent_runtime
 except ImportError:  # pragma: no cover - used by tests importing backend.api as a package
     from backend.agent_mode_store import read_workbench, write_workbench, reset_workbench
     from backend.agent_mode_repository import create_agent_mode_repository
+    from backend.agent_auth import authenticate_user, sanitize_tenant_key
     from backend.orchestrator import orchestrator_chat
     from backend.agent.registry import dispatch_agent_tool, get_agent_tool_schemas
     from backend.agent.runtime_runner import run_agent_runtime
@@ -135,6 +137,12 @@ class AgentChatRequest(BaseModel):
     model: Optional[str] = None
     models: Optional[List[str]] = None
     enabled_data_sources: Optional[List[str]] = None
+    tenant_key: Optional[str] = None
+
+class AgentLoginRequest(BaseModel):
+    """Agent Mode demo login request."""
+    username: str
+    password: str
 
 class AgentRuntimeRequest(BaseModel):
     """Dedicated tool-calling runtime request."""
@@ -1246,10 +1254,19 @@ async def ai_chat(message: str = Query(..., min_length=1)):
     }
 
 
+@app.post("/api/auth/login", tags=["Agent Mode"])
+def login_agent_mode(request: AgentLoginRequest):
+    """Login for the Agent Mode demo workbench."""
+    user = authenticate_user(request.username, request.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    return {"ok": True, "user": user}
+
+
 @app.get("/api/agent-mode/workbench", tags=["Agent Mode"])
-def get_agent_mode_workbench(project_id: Optional[str] = None):
+def get_agent_mode_workbench(project_id: Optional[str] = None, tenant_key: Optional[str] = None):
     """Read the Agent Mode workbench data boundary."""
-    repository = create_agent_mode_repository()
+    repository = create_agent_mode_repository(tenant_key=sanitize_tenant_key(tenant_key) if tenant_key else None)
     if repository.enabled:
         try:
             return repository.build_workbench(project_id=project_id)
@@ -1259,8 +1276,9 @@ def get_agent_mode_workbench(project_id: Optional[str] = None):
 
 
 @app.put("/api/agent-mode/workbench", tags=["Agent Mode"])
-def update_agent_mode_workbench(payload: Dict[str, Any]):
+def update_agent_mode_workbench(payload: Dict[str, Any], tenant_key: Optional[str] = None):
     """Update the Agent Mode workbench seed store."""
+    _ = sanitize_tenant_key(tenant_key) if tenant_key else None
     return write_workbench(payload)
 
 
@@ -1585,9 +1603,16 @@ async def agent_chat(request: AgentChatRequest):
 @app.post("/api/orchestrator/chat", tags=["Orchestrator"])
 async def orchestrator_chat_endpoint(request: AgentChatRequest):
     """Orchestrator 多 Agent 编排对话 — SSE 流式响应"""
+    tenant_key = sanitize_tenant_key(request.tenant_key) if request.tenant_key else None
+    repository = create_agent_mode_repository(tenant_key=tenant_key)
     workbench = read_workbench()
+    if repository.enabled:
+        try:
+            workbench = repository.build_workbench()
+        except Exception:
+            workbench = read_workbench()
     return StreamingResponse(
-        orchestrator_chat(request.messages, workbench),
+        orchestrator_chat(request.messages, workbench, tenant_key=tenant_key),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -1598,15 +1623,17 @@ async def orchestrator_chat_endpoint(request: AgentChatRequest):
 
 
 @app.post("/api/workbench/reset", tags=["Orchestrator"])
-async def reset_workbench_endpoint():
+async def reset_workbench_endpoint(tenant_key: Optional[str] = None):
     """重置工作台到初始 briefing 状态"""
+    _ = sanitize_tenant_key(tenant_key) if tenant_key else None
     wb = reset_workbench()
     return {"ok": True, "workbench": wb}
 
 
 @app.get("/api/workbench/state", tags=["Orchestrator"])
-async def get_workbench_state():
+async def get_workbench_state(tenant_key: Optional[str] = None):
     """获取完整工作台状态"""
+    _ = sanitize_tenant_key(tenant_key) if tenant_key else None
     return {"ok": True, "workbench": read_workbench()}
 
 

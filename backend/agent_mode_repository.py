@@ -376,7 +376,7 @@ class AgentModeRepository:
         self.transport.request("PATCH", AGENT_TABLES[logical_table], params=params, json_body=row, prefer="return=representation")
 
 
-def create_agent_mode_repository(env: Optional[Dict[str, str]] = None) -> Any:
+def create_agent_mode_repository(env: Optional[Dict[str, str]] = None, tenant_key: Optional[str] = None) -> Any:
     env = env if env is not None else os.environ
     secret = env.get("SUPABASE_SECRET_KEY") or env.get("SUPABASE_SERVICE_ROLE_KEY")
     if not secret:
@@ -389,8 +389,8 @@ def create_agent_mode_repository(env: Optional[Dict[str, str]] = None) -> Any:
     if not supabase_url:
         return DisabledAgentModeRepository()
 
-    tenant_key = env.get("AGENT_MODE_TENANT_KEY") or "demo"
-    return AgentModeRepository(SupabaseRestTransport(supabase_url, secret), tenant_key=tenant_key)
+    resolved_tenant_key = tenant_key or env.get("AGENT_MODE_TENANT_KEY") or "demo"
+    return AgentModeRepository(SupabaseRestTransport(supabase_url, secret), tenant_key=resolved_tenant_key)
 
 
 def _project_workbench(project: Dict[str, Any]) -> Dict[str, Any]:

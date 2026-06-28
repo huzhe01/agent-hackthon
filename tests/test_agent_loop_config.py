@@ -1,5 +1,6 @@
 import importlib
 import os
+import tempfile
 import unittest
 
 
@@ -195,6 +196,32 @@ class AgentLoopConfigTest(unittest.TestCase):
         self.assertEqual(updated["live_demo"]["tick_interval_ms"], 5000)
         self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 5000)
         self.assertEqual(workbench["budget_projects"][0]["workbench"]["live_demo"]["tick_interval_ms"], 5000)
+
+    def test_agent_mode_login_returns_default_admin_session(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["AGENT_AUTH_STORE_PATH"] = os.path.join(tmpdir, "agent_users.json")
+            api = importlib.import_module("backend.api")
+            importlib.reload(api)
+
+            response = api.login_agent_mode(api.AgentLoginRequest(username="admin", password="admin"))
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["user"]["username"], "admin")
+            self.assertEqual(response["user"]["tenant_key"], "admin")
+            self.assertEqual(response["user"]["display_name"], "admin")
+            self.assertNotIn("password", response["user"])
+            self.assertNotIn("password_hash", response["user"])
+
+    def test_agent_mode_login_rejects_wrong_password(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["AGENT_AUTH_STORE_PATH"] = os.path.join(tmpdir, "agent_users.json")
+            api = importlib.import_module("backend.api")
+            importlib.reload(api)
+
+            with self.assertRaises(api.HTTPException) as ctx:
+                api.login_agent_mode(api.AgentLoginRequest(username="admin", password="wrong"))
+
+            self.assertEqual(ctx.exception.status_code, 401)
 
 
 if __name__ == "__main__":
