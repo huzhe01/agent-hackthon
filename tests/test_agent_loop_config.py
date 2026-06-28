@@ -223,6 +223,23 @@ class AgentLoopConfigTest(unittest.TestCase):
 
             self.assertEqual(ctx.exception.status_code, 401)
 
+    def test_agent_mode_fallback_workbench_persists_by_tenant(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["AGENT_MODE_STORE_DIR"] = tmpdir
+            os.environ.pop("SUPABASE_SECRET_KEY", None)
+            os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+            api = importlib.import_module("backend.api")
+            importlib.reload(api)
+
+            api.update_agent_mode_workbench({"project": {"product": "admin 历史商品"}}, tenant_key="admin")
+
+            reloaded_api = importlib.reload(api)
+            admin_workbench = reloaded_api.get_agent_mode_workbench(tenant_key="admin")
+            other_workbench = reloaded_api.get_agent_mode_workbench(tenant_key="other")
+
+            self.assertEqual(admin_workbench["project"]["product"], "admin 历史商品")
+            self.assertNotEqual(other_workbench["project"]["product"], "admin 历史商品")
+
 
 if __name__ == "__main__":
     unittest.main()

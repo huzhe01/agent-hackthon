@@ -2885,6 +2885,7 @@ export default function AgentModePage() {
         },
         onWorkbenchPatch: (patch) => {
           dispatch({ type: 'WORKBENCH_PATCH', patch });
+          api.updateAgentModeWorkbench(patch, authSession).catch(() => {});
           if (patch.live_demo) {
             setLiveDemoIndex(0);
             setLiveDemoPlaying(false);
@@ -2910,6 +2911,7 @@ export default function AgentModePage() {
         },
         onAgentAction: (event) => {
           dispatch({ type: 'AGENT_ACTION', event });
+          api.updateAgentModeWorkbench({ left_timeline: [...(wb.left_timeline || []), event] }, authSession).catch(() => {});
         },
         onError: (error) => {
           setChatMessages((c) => c.map((m) =>

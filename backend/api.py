@@ -1266,20 +1266,21 @@ def login_agent_mode(request: AgentLoginRequest):
 @app.get("/api/agent-mode/workbench", tags=["Agent Mode"])
 def get_agent_mode_workbench(project_id: Optional[str] = None, tenant_key: Optional[str] = None):
     """Read the Agent Mode workbench data boundary."""
-    repository = create_agent_mode_repository(tenant_key=sanitize_tenant_key(tenant_key) if tenant_key else None)
+    resolved_tenant_key = sanitize_tenant_key(tenant_key) if tenant_key else None
+    repository = create_agent_mode_repository(tenant_key=resolved_tenant_key)
     if repository.enabled:
         try:
             return repository.build_workbench(project_id=project_id)
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Agent Mode persistence error: {exc}") from exc
-    return read_workbench()
+    return read_workbench(tenant_key=resolved_tenant_key)
 
 
 @app.put("/api/agent-mode/workbench", tags=["Agent Mode"])
 def update_agent_mode_workbench(payload: Dict[str, Any], tenant_key: Optional[str] = None):
     """Update the Agent Mode workbench seed store."""
-    _ = sanitize_tenant_key(tenant_key) if tenant_key else None
-    return write_workbench(payload)
+    resolved_tenant_key = sanitize_tenant_key(tenant_key) if tenant_key else None
+    return write_workbench(payload, tenant_key=resolved_tenant_key)
 
 
 @app.get("/api/ai/data-sources", tags=["AI Agent"])
@@ -1605,12 +1606,12 @@ async def orchestrator_chat_endpoint(request: AgentChatRequest):
     """Orchestrator 多 Agent 编排对话 — SSE 流式响应"""
     tenant_key = sanitize_tenant_key(request.tenant_key) if request.tenant_key else None
     repository = create_agent_mode_repository(tenant_key=tenant_key)
-    workbench = read_workbench()
+    workbench = read_workbench(tenant_key=tenant_key)
     if repository.enabled:
         try:
             workbench = repository.build_workbench()
         except Exception:
-            workbench = read_workbench()
+            workbench = read_workbench(tenant_key=tenant_key)
     return StreamingResponse(
         orchestrator_chat(request.messages, workbench, tenant_key=tenant_key),
         media_type="text/event-stream",
@@ -1625,16 +1626,16 @@ async def orchestrator_chat_endpoint(request: AgentChatRequest):
 @app.post("/api/workbench/reset", tags=["Orchestrator"])
 async def reset_workbench_endpoint(tenant_key: Optional[str] = None):
     """重置工作台到初始 briefing 状态"""
-    _ = sanitize_tenant_key(tenant_key) if tenant_key else None
-    wb = reset_workbench()
+    resolved_tenant_key = sanitize_tenant_key(tenant_key) if tenant_key else None
+    wb = reset_workbench(tenant_key=resolved_tenant_key)
     return {"ok": True, "workbench": wb}
 
 
 @app.get("/api/workbench/state", tags=["Orchestrator"])
 async def get_workbench_state(tenant_key: Optional[str] = None):
     """获取完整工作台状态"""
-    _ = sanitize_tenant_key(tenant_key) if tenant_key else None
-    return {"ok": True, "workbench": read_workbench()}
+    resolved_tenant_key = sanitize_tenant_key(tenant_key) if tenant_key else None
+    return {"ok": True, "workbench": read_workbench(tenant_key=resolved_tenant_key)}
 
 
 # ==================== 启动入口 ====================

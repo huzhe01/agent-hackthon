@@ -5,12 +5,18 @@ Replace the in-memory store with database reads/writes when the schema is ready.
 """
 
 from copy import deepcopy
+import json
+import os
+from pathlib import Path
+import re
 from typing import Any, Dict
 
 
 BRIEF_CORE_FIELDS = {"budget", "target_roas", "products", "market", "channels"}
 BRIEF_ALL_FIELDS = BRIEF_CORE_FIELDS | {"live_window", "inventory", "margin", "constraints"}
 LIVE_DEMO_TICK_INTERVAL_MS = 5000
+DEFAULT_STORE_DIR = Path(__file__).resolve().parent / "data"
+_TENANT_PATTERN = re.compile(r"[^a-zA-Z0-9_-]+")
 
 _INITIAL_BRIEF: Dict[str, Any] = {
     "budget": None,
@@ -643,6 +649,49 @@ AGENT_MODE_WORKBENCH: Dict[str, Any] = {
     "disabled_actions": ["价格承诺", "退款处理", "新开渠道"],
 }
 
+_BASE_AGENT_MODE_WORKBENCH = deepcopy(AGENT_MODE_WORKBENCH)
+
+
+def _sanitize_tenant_key(tenant_key: Any) -> str:
+    cleaned = _TENANT_PATTERN.sub("-", str(tenant_key or "demo").strip().lower()).strip("-")
+    return cleaned or "demo"
+
+
+def _store_dir() -> Path:
+    return Path(os.environ.get("AGENT_MODE_STORE_DIR") or DEFAULT_STORE_DIR)
+
+
+def _store_path(tenant_key: Any) -> Path:
+    return _store_dir() / f"agent_workbench_{_sanitize_tenant_key(tenant_key)}.json"
+
+
+def _fresh_workbench() -> Dict[str, Any]:
+    return _normalize_live_demo_timing(deepcopy(_BASE_AGENT_MODE_WORKBENCH))
+
+
+def _load_tenant_workbench(tenant_key: Any) -> Dict[str, Any]:
+    path = _store_path(tenant_key)
+    if not path.exists():
+        workbench = _fresh_workbench()
+        _save_tenant_workbench(tenant_key, workbench)
+        return workbench
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        payload = _fresh_workbench()
+    if not isinstance(payload, dict):
+        payload = _fresh_workbench()
+    return _normalize_live_demo_timing(payload)
+
+
+def _save_tenant_workbench(tenant_key: Any, workbench: Dict[str, Any]) -> None:
+    path = _store_path(tenant_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(_normalize_live_demo_timing(deepcopy(workbench)), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
 
 def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:
     for key, value in patch.items():
@@ -675,11 +724,19 @@ def _normalize_live_demo_timing(workbench: Dict[str, Any]) -> Dict[str, Any]:
     return workbench
 
 
-def read_workbench() -> Dict[str, Any]:
+def read_workbench(tenant_key: Any = None) -> Dict[str, Any]:
+    if tenant_key:
+        return _normalize_live_demo_timing(deepcopy(_load_tenant_workbench(tenant_key)))
     return _normalize_live_demo_timing(deepcopy(AGENT_MODE_WORKBENCH))
 
 
-def write_workbench(payload: Dict[str, Any]) -> Dict[str, Any]:
+def write_workbench(payload: Dict[str, Any], tenant_key: Any = None) -> Dict[str, Any]:
+    if tenant_key:
+        workbench = _load_tenant_workbench(tenant_key)
+        _deep_merge(workbench, payload or {})
+        _normalize_live_demo_timing(workbench)
+        _save_tenant_workbench(tenant_key, workbench)
+        return read_workbench(tenant_key=tenant_key)
     _deep_merge(AGENT_MODE_WORKBENCH, payload or {})
     _normalize_live_demo_timing(AGENT_MODE_WORKBENCH)
     return read_workbench()
@@ -691,32 +748,16 @@ def patch_workbench(patch: Dict[str, Any]) -> None:
     _normalize_live_demo_timing(AGENT_MODE_WORKBENCH)
 
 
-def reset_workbench() -> Dict[str, Any]:
+def reset_workbench(tenant_key: Any = None) -> Dict[str, Any]:
     """Reset to the initial briefing state."""
     global AGENT_MODE_WORKBENCH
-    AGENT_MODE_WORKBENCH["phase"] = "briefing"
-    AGENT_MODE_WORKBENCH["brief_fields"] = deepcopy(_INITIAL_BRIEF)
-    AGENT_MODE_WORKBENCH["brief_complete"] = False
-    AGENT_MODE_WORKBENCH["project"] = {
-        "name": "", "product": "", "market": "",
-        "totalBudget": "", "totalBudgetValue": 0,
-        "liveWindow": "", "inventory": "", "margin": "",
-        "targetRoas": "", "channels": "",
-    }
-    AGENT_MODE_WORKBENCH["active_project_id"] = None
-    AGENT_MODE_WORKBENCH["budget_projects"] = _build_budget_projects()
-    AGENT_MODE_WORKBENCH["left_timeline"] = []
-    AGENT_MODE_WORKBENCH["live_rooms"] = []
-    AGENT_MODE_WORKBENCH["plan_options"] = []
-    AGENT_MODE_WORKBENCH["plan_versions"] = []
-    AGENT_MODE_WORKBENCH["live_loop"] = deepcopy(_INITIAL_LIVE_LOOP)
-    AGENT_MODE_WORKBENCH["live_demo"] = deepcopy(_LIVE_DEMO)
-    AGENT_MODE_WORKBENCH["selected_plan"] = "balanced"
-    AGENT_MODE_WORKBENCH["guard_limit"] = "15"
-    AGENT_MODE_WORKBENCH["approval_threshold"] = "800"
-    AGENT_MODE_WORKBENCH["chat_welcome"] = "你好！我是 MaiDeal 投放调度中心。请描述你的经营目标，例如：「我要给便携榨汁杯做一场美国市场直播，预算 $5,000」。我会帮你逐步梳理投放方案。"
-    for agent in AGENT_MODE_WORKBENCH.get("agent_roster", []):
+    fresh = _fresh_workbench()
+    for agent in fresh.get("agent_roster", []):
         agent["status"] = "待命"
+    if tenant_key:
+        _save_tenant_workbench(tenant_key, fresh)
+        return read_workbench(tenant_key=tenant_key)
+    AGENT_MODE_WORKBENCH = fresh
     return read_workbench()
 
 
