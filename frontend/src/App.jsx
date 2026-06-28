@@ -57,6 +57,8 @@ import * as api from './services/api';
 import { chatWithAgent } from './services/api';
 import AgentLoopPage from './agent-loop/AgentLoopPage';
 import AgentModePage from './agent-mode/AgentModePage';
+import AgentDataPage from './agent-data/AgentDataPage';
+import AgentBackendPage from './agent-backend/AgentBackendPage';
 import ManualWorkbenchPage from './manual-workbench/ManualWorkbenchPage';
 
 // Components
@@ -1898,6 +1900,14 @@ function DashboardApp() {
 }
 
 export default function AdPlatform() {
+  if (window.location.pathname === '/agent-data') {
+    return <AgentDataPage />;
+  }
+
+  if (window.location.pathname === '/agentbackend') {
+    return <AgentBackendPage />;
+  }
+
   if (window.location.pathname === '/agent-mode') {
     return <AgentModePage />;
   }
