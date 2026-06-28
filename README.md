@@ -271,10 +271,6 @@ agent-hackthon/
 │   └── agent/                          # 工具和技能层
 ├── supabase/migrations/
 │   └── 20260627170000_agent_mode_persistence.sql
-├── docs/
-│   ├── hackathon-growengine-agent-plan.md
-│   ├── hackathon-server-deployment-guide.md
-│   └── plans/growengine-global-image-text-agent-plan.md
 └── tests/
     ├── test_agent_mode_frontend.py
     ├── test_agent_mode_simulator.py

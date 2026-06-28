@@ -54,7 +54,8 @@ ad_rec_frontend/node_modules/
 ad_rec_backend/__pycache__/
 
 # Agent hackathon cleanup / generated artifacts
-# Keep the new repository focused on source, docs, and reproducible demo code.
+# Keep the new repository focused on source and reproducible demo code.
+docs/
 dist/
 *.tar.gz
 *.apk
