@@ -265,7 +265,7 @@ class LiveLoopOrchestratorTest(unittest.TestCase):
         self.assertIn("pending_review", workbench)
         self.assertGreater(len(workbench["pending_review"]["benchmarks"]), 0)
         self.assertEqual(workbench["live_demo"]["frames"][0]["metrics"]["spend"], 0)
-        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 60000)
+        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 5000)
         self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed"], "00:01:00")
         self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed_seconds"], 60)
 

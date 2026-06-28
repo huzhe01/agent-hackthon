@@ -189,7 +189,7 @@ function createBlankBudgetProject(serial = 1) {
     },
     live_demo: {
       enabled: false,
-      tick_interval_ms: 10000,
+      tick_interval_ms: 5000,
       frames: [emptyFrame],
     },
     lead_rows: [],
@@ -2487,7 +2487,7 @@ export default function AgentModePage() {
   const activeBudgetProjectId = wb.active_project_id || null;
   const currentLiveDemo = wb.live_demo?.frames?.length ? wb.live_demo : agentModeFallback.live_demo;
   const liveDemoFrames = currentLiveDemo.frames || [];
-  const liveDemoInterval = currentLiveDemo.tick_interval_ms || 1800;
+  const liveDemoInterval = currentLiveDemo.tick_interval_ms || 5000;
   const currentLiveFrame = liveDemoFrames[liveDemoIndex] || liveDemoFrames[0] || null;
   const liveDemoCompleted = liveDemoFrames.length > 0 && liveDemoIndex >= liveDemoFrames.length - 1 && phase === 'live';
   const terminalLiveFrame = phase === 'live' && isTerminalLiveFrame(currentLiveFrame);

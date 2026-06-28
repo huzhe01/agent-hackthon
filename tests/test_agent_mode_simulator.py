@@ -72,7 +72,7 @@ class AgentModeSimulatorTest(unittest.TestCase):
         self.assertEqual(spends[0], 0)
         self.assertEqual(spends[-1], 10000)
         self.assertEqual(spends, sorted(spends))
-        self.assertEqual(bundle["live_demo"]["tick_interval_ms"], 60000)
+        self.assertEqual(bundle["live_demo"]["tick_interval_ms"], 5000)
         self.assertEqual(frames[1]["elapsed"], "00:01:00")
         self.assertEqual(frames[1]["elapsed_seconds"], 60)
         self.assertEqual(

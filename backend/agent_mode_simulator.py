@@ -259,7 +259,7 @@ def _build_live_demo(
             "steps": _steps_for(index, alerts),
             "alerts": alerts,
         })
-    return {"enabled": True, "tick_interval_ms": 60000, "frames": frames}
+    return {"enabled": True, "tick_interval_ms": 5000, "frames": frames}
 
 
 def _build_review(brief: Dict[str, Any], live_demo: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:

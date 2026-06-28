@@ -287,7 +287,7 @@ class AgentModeFrontendTest(unittest.TestCase):
             "currentLiveFrame",
             "budget_pool",
             "sku_ads",
-            "tick_interval_ms: 10000",
+            "tick_interval_ms: 5000",
             "currentActiveAlert",
             "approvalPauseRef",
         ]:
