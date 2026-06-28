@@ -207,6 +207,216 @@ function createBlankBudgetProject(serial = 1) {
   };
 }
 
+function getWorkbenchLiveDemoFinalIndex(workbench = {}) {
+  const frames = workbench?.live_demo?.frames || [];
+  return Math.max(0, frames.length - 1);
+}
+
+function shouldOpenProjectAtFinalFrame(project = {}) {
+  const workbench = project.workbench || {};
+  return Boolean(
+    workbench.review_ready ||
+    workbench.phase === 'review' ||
+    ['已复盘', '已完成', '已托管'].includes(project.status),
+  );
+}
+
+function getProjectLiveDemoFinalIndex(project = {}) {
+  return shouldOpenProjectAtFinalFrame(project) ? getWorkbenchLiveDemoFinalIndex(project.workbench) : 0;
+}
+
+function isBudgetApprovalAction(action) {
+  return /追加|审批|批准/.test(String(action || ''));
+}
+
+function parseBudgetApprovalAmount(alert = {}, action = '', totalBudget = 0) {
+  const source = `${action} ${alert.recommendation || ''} ${alert.message || ''}`;
+  const match = source.match(/\$\s*([\d,]+)/);
+  if (match) return parseMoneyValue(match[1], 0);
+  return Math.max(1000, Math.round(Number(totalBudget || 0) * 0.12));
+}
+
+function pickBudgetApprovalPoolIndex(budgetPool = []) {
+  const candidates = budgetPool
+    .map((pool, index) => ({
+      index,
+      reserve: /reserve|保留/.test(String(pool.id || pool.label || '').toLowerCase()),
+      ratio: Number(pool.spent || 0) / Math.max(1, Number(pool.total || 0)),
+    }))
+    .filter((pool) => !pool.reserve);
+
+  if (!candidates.length) return Math.max(0, budgetPool.length - 1);
+  return candidates.sort((a, b) => b.ratio - a.ratio)[0].index;
+}
+
+function applyBudgetApprovalToLiveDemo(liveDemo = {}, startIndex = 0, approved_budget_amount = 0, targetRoas = 3) {
+  const frames = liveDemo.frames || [];
+  const finalIndex = Math.max(startIndex, frames.length - 1);
+  const targetMultiplier = Math.max(1, Number(targetRoas || 3));
+
+  return {
+    ...liveDemo,
+    frames: frames.map((frame, index) => {
+      if (index < startIndex) return frame;
+
+      const progress = finalIndex === startIndex ? 1 : (index - startIndex) / Math.max(1, finalIndex - startIndex);
+      const incrementalSpend = Math.round(approved_budget_amount * 0.82 * progress);
+      const incrementalRevenue = Math.round(incrementalSpend * targetMultiplier);
+      const budgetPool = frame.budget_pool || [];
+      const targetPoolIndex = pickBudgetApprovalPoolIndex(budgetPool);
+      const nextBudgetPool = budgetPool.map((pool, poolIndex) => {
+        if (poolIndex !== targetPoolIndex) return { ...pool };
+        return {
+          ...pool,
+          total: Number(pool.total || 0) + approved_budget_amount,
+          spent: Math.min(
+            Number(pool.total || 0) + approved_budget_amount,
+            Number(pool.spent || 0) + incrementalSpend,
+          ),
+        };
+      });
+      const nextSpend = Number(frame.metrics?.spend || 0) + incrementalSpend;
+      const nextRevenue = Number(frame.metrics?.revenue || 0) + incrementalRevenue;
+      const nextSkuAds = (frame.sku_ads || []).map((sku, skuIndex) => {
+        if (skuIndex !== 0) return { ...sku };
+        const skuSpend = Number(sku.spend || 0) + incrementalSpend;
+        const skuGmv = Number(sku.gmv || 0) + incrementalRevenue;
+        return {
+          ...sku,
+          spend: skuSpend,
+          gmv: skuGmv,
+          roi: skuSpend ? Number((skuGmv / skuSpend).toFixed(1)) : Number(sku.roi || 0),
+          units: Number(sku.units || 0) + Math.round(incrementalRevenue / 45),
+          status: index === startIndex ? '已审批' : sku.status,
+        };
+      });
+      const approvalEvent = {
+        time: frame.time || '当前',
+        agent: '调度中心',
+        text: `预算审批已写入：追加 ${formatMoney(approved_budget_amount)} 到预算池。`,
+        tone: 'amber',
+        event_type: 'approval',
+      };
+
+      return {
+        ...frame,
+        state_label: index === startIndex ? '预算审批' : frame.state_label,
+        metrics: {
+          ...(frame.metrics || {}),
+          spend: nextSpend,
+          revenue: nextRevenue,
+          profit: nextRevenue - nextSpend,
+          roas: nextSpend ? Number((nextRevenue / nextSpend).toFixed(1)) : 0,
+          inventory: Math.max(0, Number(frame.metrics?.inventory || 0) - Math.round(incrementalRevenue / 45)),
+        },
+        budget_pool: nextBudgetPool,
+        sku_ads: nextSkuAds,
+        events: index === startIndex
+          ? [...(frame.events || []), approvalEvent]
+          : frame.events || [],
+        alerts: (frame.alerts || []).filter((alert) => alert.type !== 'budget_low'),
+      };
+    }),
+  };
+}
+
+function snapshotWorkbenchWithoutHistory(workbench = {}) {
+  return {
+    ...workbench,
+    budget_projects: [],
+  };
+}
+
+function finalizeActiveBudgetProjectSnapshot(workbench = {}, patch = {}) {
+  const activeProjectId = patch.active_project_id || workbench.active_project_id;
+  const projects = patch.budget_projects || workbench.budget_projects || [];
+  if (!activeProjectId || !projects.length) return projects;
+
+  const nextWorkbench = mergeWorkbench({
+    ...workbench,
+    ...patch,
+    project: {
+      ...(workbench.project || {}),
+      ...(patch.project || {}),
+    },
+  });
+  const finalFrame = (nextWorkbench.live_demo?.frames || [])[getWorkbenchLiveDemoFinalIndex(nextWorkbench)] || {};
+  const finalMetrics = finalFrame.metrics || {};
+  const nextStatus = nextWorkbench.review_ready || nextWorkbench.phase === 'review' ? '已复盘' : '进行中';
+
+  return projects.map((project) => {
+    if (project.id !== activeProjectId) return project;
+    return {
+      ...project,
+      status: project.status === '待选择' ? '进行中' : nextStatus,
+      budget: nextWorkbench.project?.totalBudget || project.budget,
+      spent: formatMoney(finalMetrics.spend || parseMoneyValue(project.spent, 0)),
+      roas: finalMetrics.roas ? String(finalMetrics.roas) : project.roas,
+      updated_at: finalFrame.time || project.updated_at,
+      workbench: snapshotWorkbenchWithoutHistory(nextWorkbench),
+    };
+  });
+}
+
+function buildBudgetApprovalPatch({
+  workbench,
+  liveDemo,
+  liveDemoIndex,
+  alert,
+  action,
+  totalBudget,
+}) {
+  const approved_budget_amount = parseBudgetApprovalAmount(alert, action, totalBudget);
+  const nextTotalBudget = Number(totalBudget || 0) + approved_budget_amount;
+  const nextLiveDemo = applyBudgetApprovalToLiveDemo(
+    liveDemo,
+    liveDemoIndex,
+    approved_budget_amount,
+    workbench.project?.targetRoas,
+  );
+  const nextProject = {
+    ...(workbench.project || {}),
+    totalBudget: formatMoney(nextTotalBudget),
+    totalBudgetValue: nextTotalBudget,
+  };
+  const managedEvent = {
+    time: (nextLiveDemo.frames?.[liveDemoIndex] || {}).time || '当前',
+    agent: '调度中心',
+    text: `预算审批已写入：追加 ${formatMoney(approved_budget_amount)}，预算池已同步更新。`,
+    tone: 'amber',
+    event_type: 'approval',
+  };
+  const nextPatch = {
+    approved_budget_amount,
+    project: nextProject,
+    live_demo: nextLiveDemo,
+    managed_events: [...(workbench.managed_events || []), managedEvent],
+    live_loop: {
+      ...(workbench.live_loop || {}),
+      status: 'completed',
+      pending_action: null,
+      last_action: {
+        id: `approved-budget-${Date.now()}`,
+        type: 'budget_approval',
+        amount: approved_budget_amount,
+        status: 'executed',
+      },
+      verification: {
+        status: 'verified',
+        summary: `预算审批已写入，后续预算池增加 ${formatMoney(approved_budget_amount)} 并继续托管。`,
+        roas_delta: '+0.2',
+        profit_delta: '+尾场增量',
+        next_step: '继续观察尾场消耗与 SKU 转化。',
+      },
+    },
+  };
+
+  return {
+    ...nextPatch,
+    budget_projects: finalizeActiveBudgetProjectSnapshot(workbench, nextPatch),
+  };
+}
+
 function workbenchReducer(state, action) {
   switch (action.type) {
     case 'INIT':
@@ -2035,13 +2245,17 @@ export default function AgentModePage() {
   useEffect(() => {
     const pendingReview = wb.pending_review;
     if (!liveDemoCompleted || wb.review_ready || !pendingReview) return;
-    const patch = {
+    const reviewPatch = {
       review_ready: true,
       review_benchmarks: pendingReview.benchmarks || [],
       review_actions: pendingReview.key_actions || [],
       strategy_notes: pendingReview.strategy_notes || [],
       lead_rows: pendingReview.lead_assets || [],
       api_trace: pendingReview.api_trace || [],
+    };
+    const patch = {
+      ...reviewPatch,
+      budget_projects: finalizeActiveBudgetProjectSnapshot(wb, reviewPatch),
     };
     dispatch({ type: 'WORKBENCH_PATCH', patch });
     api.updateAgentModeWorkbench(patch).catch(() => {});
@@ -2097,11 +2311,11 @@ export default function AgentModePage() {
     if (!selectedProject) return;
 
     dispatch({ type: 'SELECT_BUDGET_PROJECT', projectId });
-    setLiveDemoIndex(0);
+    setLiveDemoIndex(getProjectLiveDemoFinalIndex(selectedProject));
     setLiveDemoPlaying(false);
     approvalPauseRef.current = false;
     setAcknowledgedAlerts({});
-    setActiveStage(selectedProject.workbench?.phase === 'review' ? 'review' : 'plan');
+    setActiveStage(selectedProject.workbench?.phase === 'review' || selectedProject.workbench?.review_ready ? 'review' : 'plan');
     setChatMessages([
       {
         id: `project-switch-${projectId}`,
@@ -2113,8 +2327,10 @@ export default function AgentModePage() {
     api.getAgentModeWorkbench(projectId)
       .then((response) => {
         if (response?.active_project_id === projectId) {
+          const responseProject = { ...selectedProject, workbench: response };
           dispatch({ type: 'INIT', workbench: response });
-          setActiveStage(response.phase === 'review' ? 'review' : 'plan');
+          setLiveDemoIndex(getProjectLiveDemoFinalIndex(responseProject));
+          setActiveStage(response.phase === 'review' || response.review_ready ? 'review' : 'plan');
         }
       })
       .catch(() => {});
@@ -2286,6 +2502,19 @@ export default function AgentModePage() {
 
   const onAcknowledgeAlert = useCallback((alertId, action) => {
     if (!alertId) return;
+    const activeAlert = (currentLiveFrame?.alerts || []).find((alert) => alert.id === alertId);
+    if (activeAlert && isBudgetApprovalAction(action)) {
+      const nextPatch = buildBudgetApprovalPatch({
+        workbench: wb,
+        liveDemo: currentLiveDemo,
+        liveDemoIndex,
+        alert: activeAlert,
+        action,
+        totalBudget,
+      });
+      dispatch({ type: 'WORKBENCH_PATCH', patch: nextPatch });
+      api.updateAgentModeWorkbench(nextPatch).catch(() => {});
+    }
     setAcknowledgedAlerts((current) => ({ ...current, [alertId]: action || true }));
     if (approvalPauseRef.current && activeStage === 'live') {
       approvalPauseRef.current = false;
@@ -2296,10 +2525,12 @@ export default function AgentModePage() {
       {
         id: `alert-ack-${alertId}-${Date.now()}`,
         role: 'assistant',
-        content: `已记录你的选择：${action}。系统会继续按直播实时数据推进预算托管。`,
+        content: isBudgetApprovalAction(action)
+          ? `已记录你的选择：${action}。预算审批已写入，预算池会按新的总预算继续推进。`
+          : `已记录你的选择：${action}。系统会继续按直播实时数据推进预算托管。`,
       },
     ]);
-  }, [activeStage]);
+  }, [activeStage, currentLiveDemo, currentLiveFrame, liveDemoIndex, totalBudget, wb]);
 
   const canvasProps = {
     activeStage,

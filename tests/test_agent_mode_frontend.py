@@ -307,6 +307,34 @@ class AgentModeFrontendTest(unittest.TestCase):
         self.assertIn("setLiveDemoPlaying(false)", page_source)
         self.assertIn("setLiveDemoPlaying(true)", page_source)
 
+    def test_agent_mode_live_demo_final_frame_is_persisted_for_history(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "getProjectLiveDemoFinalIndex",
+            "shouldOpenProjectAtFinalFrame",
+            "finalizeActiveBudgetProjectSnapshot",
+            "setLiveDemoIndex(getProjectLiveDemoFinalIndex(selectedProject))",
+            "const responseProject = { ...selectedProject, workbench: response }",
+            "setLiveDemoIndex(getProjectLiveDemoFinalIndex(responseProject))",
+            "response.phase === 'review' || response.review_ready",
+            "liveDemoCompleted",
+        ]:
+            self.assertIn(marker, page_source)
+
+    def test_agent_mode_budget_alert_approval_updates_workbench_budget_pool(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "applyBudgetApprovalToLiveDemo",
+            "buildBudgetApprovalPatch",
+            "isBudgetApprovalAction",
+            "approved_budget_amount",
+            "api.updateAgentModeWorkbench(nextPatch)",
+            "预算审批已写入",
+        ]:
+            self.assertIn(marker, page_source)
+
     def test_agent_mode_prompt_plan_launch_and_review_are_gated(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 
