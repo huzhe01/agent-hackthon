@@ -26,6 +26,7 @@ import {
   Paperclip,
   Pause,
   Play,
+  Plus,
   RefreshCw,
   Send,
   ShieldCheck,
@@ -123,6 +124,88 @@ const BRIEF_FIELD_LABELS = {
   constraints: '约束条件',
 };
 const BRIEF_CORE_FIELDS = ['budget', 'target_roas', 'products', 'market', 'channels'];
+
+const blankReviewBenchmarks = [
+  { title: '固定预算基线', line1: 'ROAS 0', line2: '毛利 $0', line3: '暂无数据', highlight: false },
+  { title: 'MaiDeal 托管预估', line1: 'ROAS 0', line2: '毛利 $0', line3: '+$0 预估增量毛利', highlight: true },
+  { title: '增量贡献', line1: '+0% ROAS', line2: '+0% 毛利', line3: '0 次调仓', highlight: false },
+];
+
+function createBlankBudgetProject(serial = 1) {
+  const id = `blank-agent-project-${Date.now()}`;
+  const name = `新预算项目 ${serial}`;
+  const emptyFrame = {
+    id: 'blank-00-00',
+    time: '00:00',
+    elapsed: '00:00:00',
+    state_label: '未开始',
+    metrics: { spend: 0, revenue: 0, profit: 0, roas: 0, cpa: 0, inventory: 0 },
+    budget_pool: [
+      { id: 'tiktok', label: 'TikTok Ads', spent: 0, total: 0, tone: 'cyan' },
+      { id: 'meta', label: 'Meta Ads', spent: 0, total: 0, tone: 'violet' },
+      { id: 'reserve', label: '直播间尾场保留', spent: 0, total: 0, tone: 'amber' },
+    ],
+    sku_ads: [],
+    events: [],
+    steps: [],
+    alerts: [],
+  };
+  const workbench = {
+    ...agentModeFallback,
+    phase: 'briefing',
+    brief_fields: { ...agentModeFallback.brief_fields },
+    brief_complete: false,
+    project: {
+      ...agentModeFallback.project,
+      name,
+      totalBudget: '$0',
+      totalBudgetValue: 0,
+      targetRoas: '0',
+    },
+    active_project_id: id,
+    budget_projects: [],
+    selected_room_id: '',
+    selected_plan: '',
+    guard_limit: '0',
+    approval_threshold: '0',
+    live_rooms: [],
+    plan_options: [],
+    plan_versions: [],
+    live_loop: {
+      status: 'idle',
+      steps: [],
+      pending_action: null,
+      last_action: null,
+      verification: null,
+    },
+    live_demo: {
+      enabled: false,
+      tick_interval_ms: 10000,
+      frames: [emptyFrame],
+    },
+    lead_rows: [],
+    fallback_campaigns: [],
+    managed_events: [],
+    review_benchmarks: blankReviewBenchmarks,
+    review_actions: [],
+    strategy_notes: [],
+    disabled_actions: [],
+    left_timeline: [],
+    chat_welcome: '已创建空白预算项目。请先补充投放预算、商品、目标市场、渠道和 ROAS。',
+  };
+
+  return {
+    id,
+    name,
+    market: '待填写',
+    status: '新项目',
+    budget: '$0',
+    spent: '$0',
+    roas: '0',
+    updated_at: '刚刚',
+    workbench,
+  };
+}
 
 function workbenchReducer(state, action) {
   switch (action.type) {
@@ -294,6 +377,7 @@ function LeftPanel({
   budgetProjects = [],
   activeBudgetProjectId,
   onSelectBudgetProject,
+  onCreateBudgetProject,
 }) {
   const projectBrief = goal?.name || `${goal?.product || '项目'} · ${goal?.market || '市场'}`;
   const activeProject = budgetProjects.find((project) => project.id === activeBudgetProjectId);
@@ -383,6 +467,7 @@ function LeftPanel({
           budgetProjects={budgetProjects}
           activeBudgetProjectId={activeBudgetProjectId}
           onSelectBudgetProject={onSelectBudgetProject}
+          onCreateBudgetProject={onCreateBudgetProject}
         />
       </div>
 
@@ -391,19 +476,29 @@ function LeftPanel({
   );
 }
 
-function BudgetProjectHistoryList({ budgetProjects = [], activeBudgetProjectId, onSelectBudgetProject }) {
-  if (!budgetProjects.length) return null;
-
+function BudgetProjectHistoryList({ budgetProjects = [], activeBudgetProjectId, onSelectBudgetProject, onCreateBudgetProject }) {
   return (
     <GlassCard className="mt-3 flex-1 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <div className="text-xs font-semibold uppercase tracking-normal text-slate-500">预算项目历史</div>
-        <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
-          {budgetProjects.length} 个项目
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="rounded-full bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-600">
+            {budgetProjects.length} 个项目
+          </span>
+          <button
+            type="button"
+            onClick={onCreateBudgetProject}
+            className="flex h-6 items-center gap-1 rounded-md border border-violet-500/20 bg-violet-500/10 px-2 text-[10px] font-semibold text-violet-600 hover:bg-violet-500/20"
+            aria-label="新增项目"
+            title="新增项目"
+          >
+            <Plus className="h-3 w-3" />
+            添加项目
+          </button>
+        </div>
       </div>
       <div className="space-y-1.5">
-        {budgetProjects.map((project) => {
+        {budgetProjects.length ? budgetProjects.map((project) => {
           const active = project.id === activeBudgetProjectId;
           return (
             <button
@@ -421,7 +516,11 @@ function BudgetProjectHistoryList({ budgetProjects = [], activeBudgetProjectId, 
               <span className="min-w-0 flex-1 truncate font-semibold text-white">{project.name}</span>
             </button>
           );
-        })}
+        }) : (
+          <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] px-3 py-4 text-center text-xs text-slate-500">
+            暂无预算项目
+          </div>
+        )}
       </div>
     </GlassCard>
   );
@@ -1088,7 +1187,7 @@ function LiveCanvas({
             事件时间线
           </div>
           <div className="space-y-4 text-sm">
-            {liveDemoEvents.map((event, index) => (
+            {liveDemoEvents.length ? liveDemoEvents.map((event, index) => (
               <div key={`${event.time}-${event.agent}-${index}`} className="flex gap-3">
                 <div className="flex flex-col items-center">
                   <StatusDot tone={event.tone} pulse={false} />
@@ -1102,7 +1201,11 @@ function LiveCanvas({
                   <div className="mt-1 text-slate-300">{event.text}</div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] px-4 py-8 text-center text-sm text-slate-500">
+                暂无操作记录
+              </div>
+            )}
           </div>
         </GlassCard>
 
@@ -1112,7 +1215,7 @@ function LiveCanvas({
             商品 SKU 投放
           </div>
           <div className="space-y-3">
-            {skuAds.map((sku) => (
+            {skuAds.length ? skuAds.map((sku) => (
               <div key={sku.id || sku.sku} className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-3">
                 <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-white/5 text-violet-300">
                   <Layers3 className="h-4 w-4" />
@@ -1126,7 +1229,11 @@ function LiveCanvas({
                   <div className="mt-1 text-xs text-slate-500">{sku.status}</div>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] px-4 py-8 text-center text-sm text-slate-500">
+                暂无 SKU 投放数据
+              </div>
+            )}
           </div>
         </GlassCard>
       </div>
@@ -1323,7 +1430,7 @@ function ReviewCanvas({
                   </tr>
                 </thead>
                 <tbody>
-                  {leadRows.map((lead) => (
+                  {leadRows.length ? leadRows.map((lead) => (
                     <tr key={lead.user} className="border-t border-white/5 text-slate-300">
                       <td className="px-4 py-3 font-semibold text-white">{lead.user}</td>
                       <td className={lead.channel === 'Meta' ? 'text-violet-300' : 'text-cyan-300'}>{lead.channel}</td>
@@ -1331,7 +1438,11 @@ function ReviewCanvas({
                       <td>{lead.action}</td>
                       <td className="px-4 text-right"><span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 text-xs">{lead.status}</span></td>
                     </tr>
-                  ))}
+                  )) : (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-500">暂无线索资产</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1366,14 +1477,18 @@ function ReviewCanvas({
         <GlassCard className="p-5">
           <div className="mb-4 text-sm font-semibold text-white">关键动作回顾</div>
           <div className="space-y-3">
-            {reviewActions.map((item) => (
+            {reviewActions.length ? reviewActions.map((item) => (
               <div key={`${item.time}-${item.action}`} className="grid grid-cols-[56px_1fr_88px_48px] items-center gap-3 rounded-lg border border-white/10 bg-white/[0.035] p-3 text-sm">
                 <span className="text-slate-500">{item.time}</span>
                 <span className="text-slate-200">{item.action}</span>
                 <span className={item.type === '审批' ? 'font-semibold text-amber-300' : 'font-semibold text-emerald-300'}>{item.result}</span>
                 <span className="text-xs text-slate-500">{item.type}</span>
               </div>
-            ))}
+            )) : (
+              <div className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] px-4 py-8 text-center text-sm text-slate-500">
+                暂无关键动作
+              </div>
+            )}
           </div>
         </GlassCard>
 
@@ -1383,9 +1498,13 @@ function ReviewCanvas({
             策略学习
           </div>
           <ul className="space-y-3 text-sm leading-6 text-slate-300">
-            {strategyNotes.map((note) => (
+            {strategyNotes.length ? strategyNotes.map((note) => (
               <li key={note}>· {note}</li>
-            ))}
+            )) : (
+              <li className="rounded-lg border border-dashed border-white/10 bg-white/[0.025] px-4 py-8 text-center text-sm text-slate-500">
+                暂无策略学习记录
+              </li>
+            )}
           </ul>
           <button
             type="button"
@@ -1572,8 +1691,8 @@ function DataSourceMenu({ dataSources, enabledDataSources, onToggleSource, open,
 }
 
 function BudgetSummary({ totalBudget, usedBudget, selectedPlan, selectedRoom }) {
-  const pct = Math.min(100, Math.round((usedBudget / totalBudget) * 100));
-  const planLabel = { steady: '保守', balanced: '均衡', aggressive: '进取' }[selectedPlan] || '均衡';
+  const pct = totalBudget ? Math.min(100, Math.round((usedBudget / totalBudget) * 100)) : 0;
+  const planLabel = { steady: '保守', balanced: '均衡', aggressive: '进取' }[selectedPlan] || '—';
   return (
     <GlassCard className="p-4">
       <div className="mb-3 flex items-center justify-between">
@@ -1880,17 +1999,17 @@ export default function AgentModePage() {
     loadBusinessData();
   }, []);
 
-  const currentLiveRooms = wb.live_rooms || [];
-  const currentPlanOptions = wb.plan_options || [];
+  const currentLiveRooms = Array.isArray(wb.live_rooms) ? wb.live_rooms : [];
+  const currentPlanOptions = Array.isArray(wb.plan_options) ? wb.plan_options : [];
   const currentProcessSteps = wb.process_steps?.length ? wb.process_steps : agentModeFallback.process_steps;
-  const currentLeadRows = wb.lead_rows?.length ? wb.lead_rows : agentModeFallback.lead_rows;
-  const currentFallbackCampaigns = wb.fallback_campaigns?.length ? wb.fallback_campaigns : agentModeFallback.fallback_campaigns;
-  const currentManagedEvents = wb.managed_events?.length ? wb.managed_events : agentModeFallback.managed_events;
+  const currentLeadRows = Array.isArray(wb.lead_rows) ? wb.lead_rows : agentModeFallback.lead_rows;
+  const currentFallbackCampaigns = Array.isArray(wb.fallback_campaigns) ? wb.fallback_campaigns : agentModeFallback.fallback_campaigns;
+  const currentManagedEvents = Array.isArray(wb.managed_events) ? wb.managed_events : agentModeFallback.managed_events;
   const currentLiveLoop = wb.live_loop || agentModeFallback.live_loop;
-  const currentReviewBenchmarks = wb.review_benchmarks?.length ? wb.review_benchmarks : agentModeFallback.review_benchmarks;
-  const currentReviewActions = wb.review_actions?.length ? wb.review_actions : agentModeFallback.review_actions;
-  const currentStrategyNotes = wb.strategy_notes?.length ? wb.strategy_notes : agentModeFallback.strategy_notes;
-  const currentDisabledActions = wb.disabled_actions?.length ? wb.disabled_actions : agentModeFallback.disabled_actions;
+  const currentReviewBenchmarks = Array.isArray(wb.review_benchmarks) ? wb.review_benchmarks : agentModeFallback.review_benchmarks;
+  const currentReviewActions = Array.isArray(wb.review_actions) ? wb.review_actions : agentModeFallback.review_actions;
+  const currentStrategyNotes = Array.isArray(wb.strategy_notes) ? wb.strategy_notes : agentModeFallback.strategy_notes;
+  const currentDisabledActions = Array.isArray(wb.disabled_actions) ? wb.disabled_actions : agentModeFallback.disabled_actions;
   const currentBudgetProjects = wb.budget_projects?.length ? wb.budget_projects : agentModeFallback.budget_projects;
   const currentAgentRoster = wb.agent_roster?.length ? wb.agent_roster : agentModeFallback.agent_roster;
   const activeBudgetProjectId = wb.active_project_id || null;
@@ -1926,7 +2045,7 @@ export default function AgentModePage() {
     () => currentLiveRooms.find((r) => r.id === selectedRoomId) || currentLiveRooms[1] || currentLiveRooms[0] || {},
     [currentLiveRooms, selectedRoomId],
   );
-  const totalBudget = parseMoneyValue(goal.totalBudgetValue || goal.totalBudget, 5000);
+  const totalBudget = parseMoneyValue(goal.totalBudgetValue || goal.totalBudget, 0);
   const usedBudget = Math.min(totalBudget, Math.round(currentLiveFrame?.metrics?.spend ?? metrics?.total_cost ?? 0));
 
   const toggleModel = (modelId) => {
@@ -2002,6 +2121,33 @@ export default function AgentModePage() {
       active_project_id: projectId,
     }).catch(() => {});
   }, [currentBudgetProjects]);
+
+  const onCreateBudgetProject = useCallback(() => {
+    const newProject = createBlankBudgetProject((currentBudgetProjects || []).length + 1);
+    const nextBudgetProjects = [newProject, ...(currentBudgetProjects || [])];
+    const nextWorkbench = mergeWorkbench({
+      ...newProject.workbench,
+      active_project_id: newProject.id,
+      budget_projects: nextBudgetProjects,
+      layout: wb.layout,
+    });
+
+    dispatch({ type: 'INIT', workbench: nextWorkbench });
+    setLiveDemoIndex(0);
+    setLiveDemoPlaying(false);
+    approvalPauseRef.current = false;
+    setAcknowledgedAlerts({});
+    setActiveStage('plan');
+    setChatMessages([
+      {
+        id: `blank-project-${newProject.id}`,
+        role: 'assistant',
+        content: '已创建空白预算项目。当前看板、复盘、线索和 SKU 投放数据均为 0 或空，请先填写预算项目 Brief。',
+      },
+    ]);
+
+    api.updateAgentModeWorkbench(nextWorkbench).catch(() => {});
+  }, [currentBudgetProjects, wb.layout]);
 
   const createResizePointerDown = (side) => (event) => {
     event.preventDefault();
@@ -2197,6 +2343,7 @@ export default function AgentModePage() {
             budgetProjects={currentBudgetProjects}
             activeBudgetProjectId={activeBudgetProjectId}
             onSelectBudgetProject={onSelectBudgetProject}
+            onCreateBudgetProject={onCreateBudgetProject}
           />
         )}
 

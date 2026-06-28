@@ -207,6 +207,32 @@ class AgentModeFrontendTest(unittest.TestCase):
         ]:
             self.assertNotIn(hidden_detail, history_source)
 
+    def test_agent_mode_can_add_blank_budget_project_without_demo_data(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "onCreateBudgetProject",
+            "新增项目",
+            "createBlankBudgetProject",
+            "blank-agent-project",
+            "lead_rows: []",
+            "fallback_campaigns: []",
+            "review_actions: []",
+            "strategy_notes: []",
+            "sku_ads: []",
+            "metrics: { spend: 0, revenue: 0, profit: 0, roas: 0, cpa: 0, inventory: 0 }",
+            "parseMoneyValue(goal.totalBudgetValue || goal.totalBudget, 0)",
+        ]:
+            self.assertIn(marker, page_source)
+
+        for list_source_marker in [
+            "Array.isArray(wb.lead_rows)",
+            "Array.isArray(wb.review_actions)",
+            "Array.isArray(wb.strategy_notes)",
+            "Array.isArray(wb.fallback_campaigns)",
+        ]:
+            self.assertIn(list_source_marker, page_source)
+
     def test_agent_mode_live_budget_pool_appears_before_strategy_loop(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
         live_canvas_source = page_source[
