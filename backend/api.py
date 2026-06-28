@@ -33,11 +33,13 @@ try:
     from agent_mode_repository import create_agent_mode_repository
     from orchestrator import orchestrator_chat
     from agent.registry import dispatch_agent_tool, get_agent_tool_schemas
+    from agent.runtime_runner import run_agent_runtime
 except ImportError:  # pragma: no cover - used by tests importing backend.api as a package
     from backend.agent_mode_store import read_workbench, write_workbench, reset_workbench
     from backend.agent_mode_repository import create_agent_mode_repository
     from backend.orchestrator import orchestrator_chat
     from backend.agent.registry import dispatch_agent_tool, get_agent_tool_schemas
+    from backend.agent.runtime_runner import run_agent_runtime
 
 load_dotenv()
 
@@ -133,6 +135,16 @@ class AgentChatRequest(BaseModel):
     model: Optional[str] = None
     models: Optional[List[str]] = None
     enabled_data_sources: Optional[List[str]] = None
+
+class AgentRuntimeRequest(BaseModel):
+    """Dedicated tool-calling runtime request."""
+    input: Optional[str] = None
+    messages: Optional[List[Dict[str, Any]]] = None
+    enable_tools: bool = True
+    model: Optional[str] = None
+    tool_names: Optional[List[str]] = None
+    skill_names: Optional[List[str]] = None
+    max_tool_rounds: int = Field(default=6, ge=1, le=12)
 
 class CampaignPreview(BaseModel):
     """AI 生成的计划预览"""
@@ -1417,6 +1429,37 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any] = None) -> Dict[str, 
     return {"success": False, "error": f"未知工具: {tool_name}"}
 
 # ---------- Agent 对话接口 (流式响应) ----------
+
+@app.post("/api/agent/runtime", tags=["AI Agent"])
+async def agent_runtime(request: AgentRuntimeRequest):
+    """Run the dedicated MaiDeal agent runtime with local skills and tools."""
+    config = get_qiji_config()
+    messages = [dict(message) for message in (request.messages or [])]
+    if request.input:
+        messages.append({"role": "user", "content": request.input})
+    if not messages:
+        raise HTTPException(status_code=400, detail="input 或 messages 必填")
+    if not config["api_key"]:
+        raise HTTPException(
+            status_code=400,
+            detail="QIJI_API_KEY 未配置，无法调用 Qiji/OpenAI-compatible agent runtime。",
+        )
+
+    try:
+        return await run_agent_runtime(
+            messages=messages,
+            config=config,
+            model=request.model or config["model"] or QIJI_DEFAULT_MODEL,
+            tool_names=request.tool_names,
+            skill_names=request.skill_names,
+            max_tool_rounds=request.max_tool_rounds,
+            enable_tools=request.enable_tools,
+        )
+    except ImportError as exc:
+        raise HTTPException(status_code=500, detail="后端缺少 openai Python SDK，请重新构建 Docker 镜像。") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
 
 @app.post("/api/ai/agent", tags=["AI Agent"])
 async def agent_chat(request: AgentChatRequest):
