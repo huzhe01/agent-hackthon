@@ -677,20 +677,30 @@ def _load_tenant_workbench(tenant_key: Any) -> Dict[str, Any]:
         return workbench
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+        _quarantine_store_file(path)
         payload = _fresh_workbench()
+        _save_tenant_workbench(tenant_key, payload)
     if not isinstance(payload, dict):
         payload = _fresh_workbench()
     return _normalize_live_demo_timing(payload)
 
 
+def _quarantine_store_file(path: Path) -> None:
+    try:
+        corrupt_path = path.with_name(f"{path.name}.corrupt.{os.getpid()}")
+        path.replace(corrupt_path)
+    except OSError:
+        return
+
+
 def _save_tenant_workbench(tenant_key: Any, workbench: Dict[str, Any]) -> None:
     path = _store_path(tenant_key)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(_normalize_live_demo_timing(deepcopy(workbench)), ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    payload = json.dumps(_normalize_live_demo_timing(deepcopy(workbench)), ensure_ascii=False, indent=2)
+    tmp_path = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp_path.write_text(payload, encoding="utf-8")
+    tmp_path.replace(path)
 
 
 def _deep_merge(base: Dict[str, Any], patch: Dict[str, Any]) -> Dict[str, Any]:

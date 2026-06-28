@@ -240,6 +240,24 @@ class AgentLoopConfigTest(unittest.TestCase):
             self.assertEqual(admin_workbench["project"]["product"], "admin 历史商品")
             self.assertNotEqual(other_workbench["project"]["product"], "admin 历史商品")
 
+    def test_agent_mode_fallback_recovers_from_corrupt_workbench_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.environ["AGENT_MODE_STORE_DIR"] = tmpdir
+            os.environ.pop("SUPABASE_SECRET_KEY", None)
+            os.environ.pop("SUPABASE_SERVICE_ROLE_KEY", None)
+            corrupt_path = os.path.join(tmpdir, "agent_workbench_admin.json")
+            with open(corrupt_path, "wb") as handle:
+                handle.write(b'{"project": "\xb9"}')
+
+            api = importlib.import_module("backend.api")
+            importlib.reload(api)
+
+            workbench = api.get_agent_mode_workbench(tenant_key="admin")
+
+            self.assertIn("project", workbench)
+            self.assertTrue(os.path.exists(corrupt_path))
+            self.assertTrue(any(name.startswith("agent_workbench_admin.json.corrupt") for name in os.listdir(tmpdir)))
+
 
 if __name__ == "__main__":
     unittest.main()
