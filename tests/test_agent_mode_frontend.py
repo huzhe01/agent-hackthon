@@ -441,6 +441,23 @@ class AgentModeFrontendTest(unittest.TestCase):
         self.assertNotIn("{ id: 'leads'", page_source)
         self.assertNotIn("props.activeStage === 'leads'", page_source)
 
+    def test_agent_mode_review_generation_is_delayed_and_has_journey_chart(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "const REVIEW_REVEAL_DELAY_MS = 5000",
+            "function ReviewGeneratingCanvas",
+            "reviewRevealPending",
+            "startReviewRevealDelay",
+            "ReviewJourneyChart",
+            "AI 正在生成盘后迭代",
+            "投放全过程曲线",
+            "liveDemoFrames={props.liveDemoFrames}",
+            "liveDemoFrames={liveDemoFrames}",
+            "window.setTimeout(() => setReviewRevealPending(false), REVIEW_REVEAL_DELAY_MS)",
+        ]:
+            self.assertIn(marker, page_source)
+
     def test_agent_mode_canvas_header_removed_and_focus_lives_in_stage_panels(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 

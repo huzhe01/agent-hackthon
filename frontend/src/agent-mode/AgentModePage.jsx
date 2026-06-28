@@ -48,6 +48,7 @@ const stageTabs = [
   { id: 'review', label: '盘后迭代', icon: GitCompare },
 ];
 const PLAN_REVEAL_DELAY_MS = 5000;
+const REVIEW_REVEAL_DELAY_MS = 5000;
 
 function formatMoney(value, currency = '$') {
   const number = Number(value || 0);
@@ -1568,12 +1569,126 @@ function LeadsCanvas({ leadRows = [] }) {
   );
 }
 
+function ReviewGeneratingCanvas({ focusMode, onToggleFocus }) {
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-5">
+      <div className="flex items-end justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">盘后迭代</h1>
+          <p className="mt-2 text-sm text-slate-500">在线看板已结束，正在生成完整复盘。</p>
+        </div>
+        <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
+      </div>
+      <GlassCard className="p-8">
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+          <div>
+            <div className="text-lg font-semibold text-white">AI 正在生成盘后迭代</div>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              正在汇总投放全过程、预算池变化、SKU 消耗、线索资产和关键动作，生成可用于下一场直播的复盘报告。
+            </p>
+          </div>
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
+function ReviewJourneyChart({ frames = [] }) {
+  const chartFrames = frames.filter((frame) => frame?.metrics);
+  const width = 720;
+  const height = 220;
+  const padding = 32;
+  const values = chartFrames.flatMap((frame) => [
+    Number(frame.metrics?.spend || 0),
+    Number(frame.metrics?.revenue || 0),
+  ]);
+  const maxValue = Math.max(1, ...values);
+  const toPoint = (frame, index, key) => {
+    const x = chartFrames.length <= 1
+      ? padding
+      : padding + (index / (chartFrames.length - 1)) * (width - padding * 2);
+    const y = height - padding - (Number(frame.metrics?.[key] || 0) / maxValue) * (height - padding * 2);
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  const revenuePoints = chartFrames.map((frame, index) => toPoint(frame, index, 'revenue')).join(' ');
+  const spendPoints = chartFrames.map((frame, index) => toPoint(frame, index, 'spend')).join(' ');
+  const finalFrame = chartFrames[chartFrames.length - 1] || {};
+  const finalMetrics = finalFrame.metrics || {};
+
+  return (
+    <GlassCard className="p-5">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-semibold text-white">
+            <BarChart3 className="h-4 w-4 text-violet-300" />
+            投放全过程曲线
+          </div>
+          <p className="mt-1 text-xs text-slate-500">按在线看板帧回放收入、消耗与关键托管节点。</p>
+        </div>
+        <div className="flex items-center gap-4 text-xs text-slate-500">
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" />收入</span>
+          <span className="flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-500" />消耗</span>
+        </div>
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-white/10 bg-white/[0.035] p-3">
+        {chartFrames.length ? (
+          <svg viewBox={`0 0 ${width} ${height}`} className="h-56 w-full" role="img" aria-label="投放全过程曲线">
+            {[0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+              const y = height - padding - ratio * (height - padding * 2);
+              return (
+                <g key={ratio}>
+                  <line x1={padding} x2={width - padding} y1={y} y2={y} stroke="currentColor" className="text-slate-200" strokeDasharray="4 6" strokeWidth="1" />
+                  <text x="4" y={y + 4} className="fill-slate-400 text-[10px]">{formatMoney(maxValue * ratio)}</text>
+                </g>
+              );
+            })}
+            <polyline points={revenuePoints} fill="none" stroke="#10b981" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            <polyline points={spendPoints} fill="none" stroke="#8b5cf6" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+            {chartFrames.map((frame, index) => {
+              const [x, y] = toPoint(frame, index, 'revenue').split(',').map(Number);
+              return (
+                <g key={frame.id || `${frame.time}-${index}`}>
+                  <circle cx={x} cy={y} r="4" fill="#10b981" />
+                  <text x={x - 18} y={height - 8} className="fill-slate-400 text-[10px]">{frame.elapsed || frame.time}</text>
+                </g>
+              );
+            })}
+          </svg>
+        ) : (
+          <div className="flex h-56 items-center justify-center text-sm text-slate-500">暂无投放过程数据</div>
+        )}
+      </div>
+
+      <div className="mt-4 grid grid-cols-3 gap-3 text-sm">
+        <div className="rounded-lg bg-white/60 p-3">
+          <div className="text-xs text-slate-500">最终收入</div>
+          <div className="mt-1 font-semibold text-slate-900">{formatMoney(finalMetrics.revenue || 0)}</div>
+        </div>
+        <div className="rounded-lg bg-white/60 p-3">
+          <div className="text-xs text-slate-500">最终消耗</div>
+          <div className="mt-1 font-semibold text-slate-900">{formatMoney(finalMetrics.spend || 0)}</div>
+        </div>
+        <div className="rounded-lg bg-white/60 p-3">
+          <div className="text-xs text-slate-500">最终 ROAS</div>
+          <div className="mt-1 font-semibold text-emerald-700">{finalMetrics.roas || 0}</div>
+        </div>
+      </div>
+    </GlassCard>
+  );
+}
+
 function ReviewCanvas({
   reviewBenchmarks = [],
   reviewActions = [],
   strategyNotes = [],
   leadRows = [],
   reviewReady = false,
+  reviewRevealPending = false,
+  liveDemoFrames = [],
   goal = {},
   totalBudget = 0,
   usedBudget = 0,
@@ -1592,6 +1707,11 @@ function ReviewCanvas({
     { endpoint: '/api/orchestrator/chat', usage: '触发方案生成、审批回写和下一场策略草案。' },
   ];
   const highIntentLeads = leadRows.filter((lead) => Number(lead.score || 0) >= 80);
+
+  if (reviewRevealPending) {
+    return <ReviewGeneratingCanvas focusMode={focusMode} onToggleFocus={onToggleFocus} />;
+  }
+
   const generateReviewReport = async () => {
     if (reviewReportStreaming) return;
     setReviewReportText('');
@@ -1696,6 +1816,8 @@ function ReviewCanvas({
           ))}
         </div>
       </GlassCard>
+
+      <ReviewJourneyChart frames={liveDemoFrames} />
 
       <GlassCard className="p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -1891,6 +2013,8 @@ function MainCanvas(props) {
             strategyNotes={props.strategyNotes}
             leadRows={props.leadRows}
             reviewReady={props.reviewReady}
+            reviewRevealPending={props.reviewRevealPending}
+            liveDemoFrames={props.liveDemoFrames}
             goal={props.goal}
             totalBudget={props.totalBudget}
             usedBudget={props.usedBudget}
@@ -2235,12 +2359,16 @@ export default function AgentModePage() {
   const [liveDemoPlaying, setLiveDemoPlaying] = useState(true);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState({});
   const [planRevealPending, setPlanRevealPending] = useState(false);
+  const [reviewRevealPending, setReviewRevealPending] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome },
   ]);
   const chatEndRef = useRef(null);
   const approvalPauseRef = useRef(false);
   const planRevealTimerRef = useRef(null);
+  const reviewRevealTimerRef = useRef(null);
+  const reviewRevealWasPendingRef = useRef(false);
+  const reviewRevealPatchRef = useRef(null);
 
   const goal = wb.project;
   const selectedRoomId = wb.selected_room_id;
@@ -2264,6 +2392,25 @@ export default function AgentModePage() {
       planRevealTimerRef.current = null;
     }
     setPlanRevealPending(false);
+  }, []);
+
+  const startReviewRevealDelay = useCallback((reviewPatch) => {
+    if (reviewRevealTimerRef.current) {
+      window.clearTimeout(reviewRevealTimerRef.current);
+    }
+    reviewRevealPatchRef.current = reviewPatch;
+    setReviewRevealPending(true);
+    reviewRevealTimerRef.current = window.setTimeout(() => setReviewRevealPending(false), REVIEW_REVEAL_DELAY_MS);
+  }, []);
+
+  const stopReviewRevealDelay = useCallback(() => {
+    if (reviewRevealTimerRef.current) {
+      window.clearTimeout(reviewRevealTimerRef.current);
+      reviewRevealTimerRef.current = null;
+    }
+    reviewRevealWasPendingRef.current = false;
+    reviewRevealPatchRef.current = null;
+    setReviewRevealPending(false);
   }, []);
 
   useEffect(() => {
@@ -2318,6 +2465,9 @@ export default function AgentModePage() {
   useEffect(() => () => {
     if (planRevealTimerRef.current) {
       window.clearTimeout(planRevealTimerRef.current);
+    }
+    if (reviewRevealTimerRef.current) {
+      window.clearTimeout(reviewRevealTimerRef.current);
     }
   }, []);
 
@@ -2385,7 +2535,7 @@ export default function AgentModePage() {
 
   useEffect(() => {
     const pendingReview = wb.pending_review;
-    if (!reviewReleaseReady || wb.review_ready || !pendingReview) return;
+    if (!reviewReleaseReady || wb.review_ready || !pendingReview || reviewRevealPatchRef.current) return;
     const reviewPatch = {
       review_ready: true,
       review_benchmarks: pendingReview.benchmarks || [],
@@ -2398,9 +2548,22 @@ export default function AgentModePage() {
       ...reviewPatch,
       budget_projects: finalizeActiveBudgetProjectSnapshot(wb, reviewPatch),
     };
+    startReviewRevealDelay(patch);
+  }, [reviewReleaseReady, wb.pending_review, wb.review_ready, startReviewRevealDelay]);
+
+  useEffect(() => {
+    if (reviewRevealPending) {
+      reviewRevealWasPendingRef.current = true;
+      return;
+    }
+    if (!reviewRevealWasPendingRef.current || !reviewRevealPatchRef.current) return;
+    const patch = reviewRevealPatchRef.current;
+    reviewRevealWasPendingRef.current = false;
+    reviewRevealPatchRef.current = null;
+    reviewRevealTimerRef.current = null;
     dispatch({ type: 'WORKBENCH_PATCH', patch });
     api.updateAgentModeWorkbench(patch).catch(() => {});
-  }, [reviewReleaseReady, wb.pending_review, wb.review_ready]);
+  }, [reviewRevealPending]);
 
   const selectedRoom = useMemo(
     () => currentLiveRooms.find((r) => r.id === selectedRoomId) || currentLiveRooms[1] || currentLiveRooms[0] || {},
@@ -2435,6 +2598,7 @@ export default function AgentModePage() {
       setActiveStage('plan');
       approvalPauseRef.current = false;
       stopPlanRevealDelay();
+      stopReviewRevealDelay();
       setChatMessages([
         { id: 'welcome', role: 'assistant', content: response.workbench.chat_welcome || agentModeFallback.chat_welcome },
       ]);
@@ -2443,6 +2607,7 @@ export default function AgentModePage() {
       setActiveStage('plan');
       approvalPauseRef.current = false;
       stopPlanRevealDelay();
+      stopReviewRevealDelay();
       setChatMessages([
         { id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome },
       ]);
@@ -2458,6 +2623,7 @@ export default function AgentModePage() {
     setLiveDemoPlaying(false);
     approvalPauseRef.current = false;
     stopPlanRevealDelay();
+    stopReviewRevealDelay();
     setAcknowledgedAlerts({});
     setActiveStage(selectedProject.workbench?.phase === 'review' || selectedProject.workbench?.review_ready ? 'review' : 'plan');
     setChatMessages([
@@ -2500,6 +2666,7 @@ export default function AgentModePage() {
     setLiveDemoPlaying(false);
     approvalPauseRef.current = false;
     stopPlanRevealDelay();
+    stopReviewRevealDelay();
     setAcknowledgedAlerts({});
     setActiveStage('plan');
     setChatMessages([
@@ -2608,6 +2775,7 @@ export default function AgentModePage() {
             setLiveDemoIndex(0);
             setLiveDemoPlaying(true);
             stopPlanRevealDelay();
+            stopReviewRevealDelay();
             setAcknowledgedAlerts({});
             approvalPauseRef.current = false;
           }
@@ -2710,6 +2878,7 @@ export default function AgentModePage() {
     strategyNotes: currentStrategyNotes,
     disabledActions: currentDisabledActions,
     currentLiveFrame,
+    liveDemoFrames,
     liveDemoEvents,
     liveDemoPlaying,
     onToggleLiveDemo,
@@ -2719,6 +2888,7 @@ export default function AgentModePage() {
     totalBudget,
     usedBudget,
     reviewReady,
+    reviewRevealPending,
     phase,
     briefFields,
   };
@@ -2750,7 +2920,12 @@ export default function AgentModePage() {
           />
         )}
 
-        <MainCanvas {...canvasProps} planRevealPending={planRevealPending} />
+        <MainCanvas
+          {...canvasProps}
+          planRevealPending={planRevealPending}
+          reviewRevealPending={reviewRevealPending}
+          liveDemoFrames={liveDemoFrames}
+        />
 
         {!focusMode && (
           <RightPanel
