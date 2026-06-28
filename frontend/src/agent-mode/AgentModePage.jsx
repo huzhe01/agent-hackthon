@@ -1817,8 +1817,6 @@ function ReviewCanvas({
         </div>
       </GlassCard>
 
-      <ReviewJourneyChart frames={liveDemoFrames} />
-
       <GlassCard className="p-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-white">
@@ -1887,6 +1885,8 @@ function ReviewCanvas({
           </div>
         </div>
       </GlassCard>
+
+      <ReviewJourneyChart frames={liveDemoFrames} />
 
       <div className="grid grid-cols-2 gap-4">
         <GlassCard className="p-5">

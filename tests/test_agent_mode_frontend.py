@@ -458,6 +458,16 @@ class AgentModeFrontendTest(unittest.TestCase):
         ]:
             self.assertIn(marker, page_source)
 
+        review_render_source = page_source[
+            page_source.index("return (\n    <div className=\"mx-auto flex max-w-6xl flex-col gap-5\">", page_source.index("function ReviewCanvas")):
+            page_source.index("{(reviewReportStreaming || reviewReportText || reviewReportError) && (")
+        ]
+        data_asset_index = review_render_source.index("线索资产已并入复盘")
+        chart_index = review_render_source.index("<ReviewJourneyChart frames={liveDemoFrames} />")
+        action_index = review_render_source.index("关键动作回顾")
+        self.assertLess(data_asset_index, chart_index)
+        self.assertLess(chart_index, action_index)
+
     def test_agent_mode_canvas_header_removed_and_focus_lives_in_stage_panels(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 
