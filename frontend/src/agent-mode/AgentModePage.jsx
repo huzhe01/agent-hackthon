@@ -725,6 +725,48 @@ function AgentStatusDock({ agentRoster = [] }) {
   );
 }
 
+function deriveAgentRosterStatuses(agentRoster = [], {
+  phase = 'briefing',
+  hasPlanOptions = false,
+  liveDemoCompleted = false,
+  reviewReady = false,
+} = {}) {
+  const planGenerated = phase === 'planning' || phase === 'live' || phase === 'review' || hasPlanOptions;
+  const liveRunning = phase === 'live';
+  const reviewFinished = reviewReady || phase === 'review';
+  const reviewDoneStatus = { status: '完成' };
+  const statusByAgent = {};
+
+  if (planGenerated) {
+    statusByAgent.planning = '方案已生成';
+  }
+
+  if (liveRunning) {
+    Object.assign(statusByAgent, {
+      orchestrator: '托管中',
+      planning: '方案已生成',
+      delivery: liveDemoCompleted ? '完成' : '执行中',
+      analysis: '监控中',
+      signal: '采集中',
+    });
+  }
+
+  if (reviewFinished) {
+    Object.assign(statusByAgent, {
+      orchestrator: '托管中',
+      planning: '方案已生成',
+      delivery: '完成',
+      analysis: reviewDoneStatus.status,
+      signal: reviewDoneStatus.status,
+    });
+  }
+
+  return agentRoster.map((agent) => ({
+    ...agent,
+    status: statusByAgent[agent.id] || agent.status,
+  }));
+}
+
 function MetricPill({ label, value, delta, tone = 'emerald', icon: Icon = BarChart3 }) {
   const color = {
     emerald: 'text-emerald-300',
@@ -2212,6 +2254,16 @@ export default function AgentModePage() {
   const currentLiveFrame = liveDemoFrames[liveDemoIndex] || liveDemoFrames[0] || null;
   const liveDemoCompleted = liveDemoFrames.length > 0 && liveDemoIndex >= liveDemoFrames.length - 1 && phase === 'live';
   const reviewReady = Boolean(wb.review_ready || currentReviewActions.length || currentStrategyNotes.length || currentLeadRows.length);
+  const rosterReviewReady = Boolean(wb.review_ready);
+  const derivedAgentRoster = useMemo(
+    () => deriveAgentRosterStatuses(currentAgentRoster, {
+      phase,
+      hasPlanOptions: currentPlanOptions.length > 0,
+      liveDemoCompleted,
+      reviewReady: rosterReviewReady,
+    }),
+    [currentAgentRoster, phase, currentPlanOptions.length, liveDemoCompleted, rosterReviewReady],
+  );
   const currentActiveAlert = useMemo(
     () => (currentLiveFrame?.alerts || []).find((alert) => !acknowledgedAlerts[alert.id]) || null,
     [currentLiveFrame, acknowledgedAlerts],
@@ -2590,7 +2642,7 @@ export default function AgentModePage() {
             onToggleCollapsed={() => setLeftCollapsed((c) => !c)}
             leftPanelWidth={leftPanelWidth}
             onResizePointerDown={createResizePointerDown('left')}
-            agentRoster={currentAgentRoster}
+            agentRoster={derivedAgentRoster}
             budgetProjects={currentBudgetProjects}
             activeBudgetProjectId={activeBudgetProjectId}
             onSelectBudgetProject={onSelectBudgetProject}

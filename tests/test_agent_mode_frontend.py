@@ -335,6 +335,24 @@ class AgentModeFrontendTest(unittest.TestCase):
         ]:
             self.assertIn(marker, page_source)
 
+    def test_agent_mode_agent_roster_status_tracks_plan_live_and_review(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "deriveAgentRosterStatuses",
+            "derivedAgentRoster",
+            "phase === 'planning'",
+            "方案已生成",
+            "投放执行",
+            "liveDemoCompleted ? '完成' : '执行中'",
+            "reviewReady || phase === 'review'",
+            "效果分析",
+            "经营信号",
+            "status: '完成'",
+            "agentRoster={derivedAgentRoster}",
+        ]:
+            self.assertIn(marker, page_source)
+
     def test_agent_mode_prompt_plan_launch_and_review_are_gated(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
 
