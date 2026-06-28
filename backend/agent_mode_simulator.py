@@ -38,6 +38,7 @@ def build_simulation_bundle(brief: Dict[str, Any], version_number: int = 1) -> D
         "plan_options": plan_options,
         "live_rooms": live_rooms,
         "live_demo": live_demo,
+        "all_events": events,
         "managed_events": events[-8:],
         "review": review,
         "review_benchmarks": review["benchmarks"],
@@ -219,12 +220,11 @@ def _build_live_demo(
     frame_count = 8
     frames = []
     total_budget = sum(pool["total"] for pool in base_pools)
+    spend_curve = _spend_curve(total_budget, frame_count)
     sold_units_by_sku = {product["id"]: 0 for product in products}
     for index in range(frame_count):
         progress = index / (frame_count - 1)
-        spend = round(total_budget * min(1, progress ** 1.15) * rng.uniform(0.88, 1.0))
-        if index == 0:
-            spend = 0
+        spend = spend_curve[index]
         roas_factor = 0.72 + progress * 0.55 + rng.uniform(-0.08, 0.08)
         if index in {2, 4}:
             roas_factor -= 0.28
@@ -243,7 +243,7 @@ def _build_live_demo(
             "id": f"frame-{index:02d}",
             "time": frame_time,
             "elapsed": _elapsed(index),
-            "elapsed_seconds": index * 10,
+            "elapsed_seconds": index * 60,
             "state_label": _state_label(index, alerts),
             "metrics": {
                 "spend": spend,
@@ -259,7 +259,7 @@ def _build_live_demo(
             "steps": _steps_for(index, alerts),
             "alerts": alerts,
         })
-    return {"enabled": True, "tick_interval_ms": 10000, "frames": frames}
+    return {"enabled": True, "tick_interval_ms": 60000, "frames": frames}
 
 
 def _build_review(brief: Dict[str, Any], live_demo: Dict[str, Any], events: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -372,6 +372,20 @@ def _spend_pools(base_pools: List[Dict[str, Any]], spend: int) -> List[Dict[str,
         next_pool["remaining"] = max(0, pool["total"] - pool_spend)
         pools.append(next_pool)
     return pools
+
+
+def _spend_curve(total_budget: int, frame_count: int) -> List[int]:
+    if frame_count <= 1:
+        return [total_budget]
+    curve = [
+        round(total_budget * ((index / (frame_count - 1)) ** 1.12))
+        for index in range(frame_count)
+    ]
+    curve[0] = 0
+    curve[-1] = total_budget
+    for index in range(1, frame_count):
+        curve[index] = max(curve[index], curve[index - 1])
+    return curve
 
 
 def _sku_frame(products: List[Dict[str, Any]], revenue: int, spend: int, sold_units_by_sku: Dict[str, int], rng: random.Random, index: int) -> List[Dict[str, Any]]:
@@ -547,13 +561,13 @@ def _slug(value: str) -> str:
 
 
 def _frame_time(index: int) -> str:
-    seconds = index * 10
+    seconds = index * 60
     minute, second = divmod(seconds, 60)
     return f"20:{minute:02d}:{second:02d}"
 
 
 def _elapsed(index: int) -> str:
-    seconds = index * 10
+    seconds = index * 60
     minute, second = divmod(seconds, 60)
     return f"00:00:{second:02d}" if minute == 0 else f"00:{minute:02d}:{second:02d}"
 

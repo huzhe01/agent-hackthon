@@ -201,7 +201,7 @@ class AgentModeRepository:
             for index, frame in enumerate(frames)
         ])
 
-        events = bundle.get("managed_events", [])
+        events = bundle.get("all_events") or bundle.get("managed_events", [])
         self._insert_many("events", [
             {
                 "id": _id(),
@@ -293,10 +293,11 @@ class AgentModeRepository:
             "approval_threshold": str((version or {}).get("guardrails", {}).get("approval_threshold", 800)),
             "plan_options": (version or {}).get("plan_options", []),
             "plan_versions": [_plan_version_summary(item, version) for item in versions],
+            "channel_pools": (version or {}).get("channel_pools", []),
             "live_rooms": (version or {}).get("live_rooms", []),
             "live_demo": {
                 "enabled": True,
-                "tick_interval_ms": 10000,
+                "tick_interval_ms": 60000,
                 "frames": [_frame_workbench(row) for row in frames],
             },
             "managed_events": [_event_workbench(row) for row in events],

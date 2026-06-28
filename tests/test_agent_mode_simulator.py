@@ -54,6 +54,33 @@ class AgentModeSimulatorTest(unittest.TestCase):
         self.assertEqual(review["expected_roas"], 3.0)
         self.assertIn("api_trace", review)
 
+    def test_live_trajectory_spend_is_monotonic_and_finishes_budget(self):
+        from backend.agent_mode_simulator import build_simulation_bundle
+
+        brief = {
+            "budget": 10000,
+            "target_roas": 5.0,
+            "products": "便携榨汁杯",
+            "market": "美国 / USD",
+            "channels": "Amazon 30% / Facebook 25% / TikTok 45%",
+        }
+
+        bundle = build_simulation_bundle(brief, version_number=1)
+        frames = bundle["live_demo"]["frames"]
+        spends = [frame["metrics"]["spend"] for frame in frames]
+
+        self.assertEqual(spends[0], 0)
+        self.assertEqual(spends[-1], 10000)
+        self.assertEqual(spends, sorted(spends))
+        self.assertEqual(bundle["live_demo"]["tick_interval_ms"], 60000)
+        self.assertEqual(frames[1]["elapsed"], "00:01:00")
+        self.assertEqual(frames[1]["elapsed_seconds"], 60)
+        self.assertEqual(
+            [pool["total"] for pool in bundle["channel_pools"]],
+            [3000, 2500, 4500],
+        )
+        self.assertGreaterEqual(len(bundle["all_events"]), len(frames))
+
     def test_simulator_requires_channels_before_plan_generation(self):
         from backend.agent_mode_simulator import validate_simulation_brief
 

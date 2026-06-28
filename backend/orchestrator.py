@@ -409,6 +409,7 @@ def _handle_generate_plans(arguments: Dict[str, Any]) -> tuple[Dict, list]:
         pending_review = simulation_bundle.get("review", {})
         wb_patch.update({
             "product_catalog": simulation_bundle.get("product_catalog", []),
+            "channel_pools": simulation_bundle.get("channel_pools", []),
             "live_demo": simulation_bundle.get("live_demo"),
             "managed_events": [],
             "pending_review": pending_review,
@@ -1045,6 +1046,11 @@ def _extract_brief_from_text(text: str, workbench: Dict[str, Any]) -> Dict[str, 
 
     if "美国" in source or re.search(r"\bUS\b|\bUSA\b", source, re.I):
         extracted["market"] = "美国 / USD"
+    elif "英国" in source or re.search(r"\bUK\b|\bGB\b|\bUnited Kingdom\b", source, re.I):
+        currency = "USD" if re.search(r"美元|美金|USD|\$", source, re.I) else "GBP"
+        extracted["market"] = f"英国 / {currency}"
+    elif "东南亚" in source or re.search(r"\bSEA\b", source, re.I):
+        extracted["market"] = "东南亚 / USD"
 
     channel_mix = _extract_channel_mix(source)
     meta_cap = _extract_meta_cap(source)

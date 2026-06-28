@@ -265,9 +265,44 @@ class LiveLoopOrchestratorTest(unittest.TestCase):
         self.assertIn("pending_review", workbench)
         self.assertGreater(len(workbench["pending_review"]["benchmarks"]), 0)
         self.assertEqual(workbench["live_demo"]["frames"][0]["metrics"]["spend"], 0)
-        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 10000)
-        self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed"], "00:00:10")
-        self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed_seconds"], 10)
+        self.assertEqual(workbench["live_demo"]["tick_interval_ms"], 60000)
+        self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed"], "00:01:00")
+        self.assertEqual(workbench["live_demo"]["frames"][1]["elapsed_seconds"], 60)
+
+    def test_single_channel_uk_goal_generates_complete_monotonic_trajectory(self):
+        self.store.write_workbench({
+            "phase": "briefing",
+            "active_project_id": "blank-project-2",
+            "budget_projects": [
+                {"id": "blank-project-2", "name": "新预算项目", "status": "新项目"},
+            ],
+            "brief_fields": {},
+            "project": {},
+            "plan_options": [],
+        })
+        text = "我要给可达鸭做一场英国市场直播，预算 20000 美元，目标 ROAS 3.0，投放 tiktok 1个渠道"
+
+        result, events = self.orchestrator._handle_extract_and_generate_plans({"text": text})
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["mode"], "generated")
+        self.assertTrue(any(event["type"] == "workbench_patch" for event in events))
+
+        workbench = self.store.read_workbench()
+        self.assertEqual(workbench["brief_fields"]["products"], "可达鸭")
+        self.assertEqual(workbench["brief_fields"]["market"], "英国 / USD")
+        self.assertEqual(workbench["brief_fields"]["budget"], 20000)
+        self.assertEqual(workbench["brief_fields"]["target_roas"], 3.0)
+        self.assertEqual(workbench["brief_fields"]["channels"], "TikTok")
+        self.assertEqual([pool["label"] for pool in workbench["channel_pools"]], ["TikTok Ads"])
+
+        frames = workbench["live_demo"]["frames"]
+        spends = [frame["metrics"]["spend"] for frame in frames]
+        self.assertEqual(spends[0], 0)
+        self.assertEqual(spends[-1], 20000)
+        self.assertEqual(spends, sorted(spends))
+        self.assertTrue(all(frame["budget_pool"][0]["total"] == 20000 for frame in frames))
+        self.assertEqual(len(workbench["product_catalog"]), 5)
 
     def test_selecting_generated_plan_by_text_enters_live_without_review_data(self):
         self.store.write_workbench({

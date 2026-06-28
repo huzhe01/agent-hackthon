@@ -47,6 +47,7 @@ const stageTabs = [
   { id: 'live', label: '在线看板', icon: Activity },
   { id: 'review', label: '盘后迭代', icon: GitCompare },
 ];
+const PLAN_REVEAL_DELAY_MS = 5000;
 
 function formatMoney(value, currency = '$') {
   const number = Number(value || 0);
@@ -63,6 +64,13 @@ function parseMoneyValue(value, fallback = 0) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function shouldDelayPlanReveal(commandText = '', phase = 'briefing') {
+  const text = String(commandText || '').trim();
+  if (!text || phase === 'live' || phase === 'review') return false;
+  if (/^选择/.test(text) || /启动|批准|拒绝|接管|暂停/.test(text)) return false;
+  return /方案|预算|ROAS|直播|投放|渠道|amazon|facebook|tiktok/i.test(text);
 }
 
 function mergeWorkbench(nextWorkbench = {}) {
@@ -960,6 +968,33 @@ function BriefingCanvas({ briefFields = {}, focusMode, onToggleFocus }) {
   );
 }
 
+function PlanGeneratingCanvas({ focusMode, onToggleFocus }) {
+  return (
+    <div className="mx-auto flex max-w-6xl flex-col gap-5">
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold text-white">正在生成投放方案</h1>
+          <p className="mt-2 text-sm text-slate-500">正在读取预算、渠道、商品和历史投放上下文，生成保守、均衡、进取三套方案。</p>
+        </div>
+        <FocusModeButton focusMode={focusMode} onToggleFocus={onToggleFocus} />
+      </div>
+      <GlassCard className="p-8">
+        <div className="flex items-start gap-4">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-violet-500/10 text-violet-600">
+            <Loader2 className="h-5 w-5 animate-spin" />
+          </div>
+          <div>
+            <div className="text-lg font-semibold text-white">方案规划 Agent 正在工作</div>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+              系统会先生成 SKU、渠道预算池、直播间矩阵和托管护栏，再把完整投放轨迹写入工作台。
+            </p>
+          </div>
+        </div>
+      </GlassCard>
+    </div>
+  );
+}
+
 function PlanCanvas({
   goal,
   selectedRoomId,
@@ -975,9 +1010,13 @@ function PlanCanvas({
   disabledActions = [],
   phase,
   briefFields,
+  planRevealPending,
   focusMode,
   onToggleFocus,
 }) {
+  if (planRevealPending) {
+    return <PlanGeneratingCanvas focusMode={focusMode} onToggleFocus={onToggleFocus} />;
+  }
   if (phase === 'briefing') {
     return <BriefingCanvas briefFields={briefFields} focusMode={focusMode} onToggleFocus={onToggleFocus} />;
   }
@@ -1823,6 +1862,7 @@ function MainCanvas(props) {
             disabledActions={props.disabledActions}
             phase={props.phase}
             briefFields={props.briefFields}
+            planRevealPending={props.planRevealPending}
             focusMode={props.focusMode}
             onToggleFocus={props.onToggleFocus}
           />
@@ -2194,11 +2234,13 @@ export default function AgentModePage() {
   const [liveDemoIndex, setLiveDemoIndex] = useState(0);
   const [liveDemoPlaying, setLiveDemoPlaying] = useState(true);
   const [acknowledgedAlerts, setAcknowledgedAlerts] = useState({});
+  const [planRevealPending, setPlanRevealPending] = useState(false);
   const [chatMessages, setChatMessages] = useState([
     { id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome },
   ]);
   const chatEndRef = useRef(null);
   const approvalPauseRef = useRef(false);
+  const planRevealTimerRef = useRef(null);
 
   const goal = wb.project;
   const selectedRoomId = wb.selected_room_id;
@@ -2207,6 +2249,22 @@ export default function AgentModePage() {
   const approvalThreshold = wb.approval_threshold;
   const phase = wb.phase || 'briefing';
   const briefFields = wb.brief_fields || {};
+
+  const startPlanRevealDelay = useCallback(() => {
+    setPlanRevealPending(true);
+    if (planRevealTimerRef.current) {
+      window.clearTimeout(planRevealTimerRef.current);
+    }
+    planRevealTimerRef.current = window.setTimeout(() => setPlanRevealPending(false), PLAN_REVEAL_DELAY_MS);
+  }, []);
+
+  const stopPlanRevealDelay = useCallback(() => {
+    if (planRevealTimerRef.current) {
+      window.clearTimeout(planRevealTimerRef.current);
+      planRevealTimerRef.current = null;
+    }
+    setPlanRevealPending(false);
+  }, []);
 
   useEffect(() => {
     async function loadConfig() {
@@ -2255,6 +2313,12 @@ export default function AgentModePage() {
 
     loadConfig();
     loadBusinessData();
+  }, []);
+
+  useEffect(() => () => {
+    if (planRevealTimerRef.current) {
+      window.clearTimeout(planRevealTimerRef.current);
+    }
   }, []);
 
   const currentLiveRooms = Array.isArray(wb.live_rooms) ? wb.live_rooms : [];
@@ -2370,6 +2434,7 @@ export default function AgentModePage() {
       dispatch({ type: 'INIT', workbench: response.workbench });
       setActiveStage('plan');
       approvalPauseRef.current = false;
+      stopPlanRevealDelay();
       setChatMessages([
         { id: 'welcome', role: 'assistant', content: response.workbench.chat_welcome || agentModeFallback.chat_welcome },
       ]);
@@ -2377,6 +2442,7 @@ export default function AgentModePage() {
       dispatch({ type: 'RESET' });
       setActiveStage('plan');
       approvalPauseRef.current = false;
+      stopPlanRevealDelay();
       setChatMessages([
         { id: 'welcome', role: 'assistant', content: agentModeFallback.chat_welcome },
       ]);
@@ -2391,6 +2457,7 @@ export default function AgentModePage() {
     setLiveDemoIndex(getProjectLiveDemoFinalIndex(selectedProject));
     setLiveDemoPlaying(false);
     approvalPauseRef.current = false;
+    stopPlanRevealDelay();
     setAcknowledgedAlerts({});
     setActiveStage(selectedProject.workbench?.phase === 'review' || selectedProject.workbench?.review_ready ? 'review' : 'plan');
     setChatMessages([
@@ -2432,6 +2499,7 @@ export default function AgentModePage() {
     setLiveDemoIndex(0);
     setLiveDemoPlaying(false);
     approvalPauseRef.current = false;
+    stopPlanRevealDelay();
     setAcknowledgedAlerts({});
     setActiveStage('plan');
     setChatMessages([
@@ -2472,6 +2540,10 @@ export default function AgentModePage() {
   const runOrchestratorCommand = async (commandText, { echoUser = true } = {}) => {
     const text = String(commandText || '').trim();
     if (!text || isStreaming) return;
+    if (shouldDelayPlanReveal(text, phase)) {
+      startPlanRevealDelay();
+      setActiveStage('plan');
+    }
 
     const userMessage = { id: `user-${Date.now()}`, role: 'user', content: text };
     const assistantId = `assistant-${Date.now()}`;
@@ -2535,6 +2607,7 @@ export default function AgentModePage() {
             setActiveStage('live');
             setLiveDemoIndex(0);
             setLiveDemoPlaying(true);
+            stopPlanRevealDelay();
             setAcknowledgedAlerts({});
             approvalPauseRef.current = false;
           }
@@ -2624,6 +2697,7 @@ export default function AgentModePage() {
     approvalThreshold,
     onApprovalThresholdChange,
     onStartManagedDelivery,
+    planRevealPending,
     liveRooms: currentLiveRooms,
     planOptions: currentPlanOptions,
     processSteps: currentProcessSteps,
@@ -2676,7 +2750,7 @@ export default function AgentModePage() {
           />
         )}
 
-        <MainCanvas {...canvasProps} />
+        <MainCanvas {...canvasProps} planRevealPending={planRevealPending} />
 
         {!focusMode && (
           <RightPanel

@@ -83,7 +83,7 @@ export const agentModeFallback = {
   },
   live_demo: {
     enabled: true,
-    tick_interval_ms: 10000,
+    tick_interval_ms: 60000,
     frames: [
       {
         id: '20-00',
@@ -371,7 +371,7 @@ export const agentModeFallback = {
 
 const phoneCaseLiveDemo = {
   enabled: true,
-  tick_interval_ms: 10000,
+  tick_interval_ms: 60000,
   frames: [
     {
       id: 'sg-20-00',

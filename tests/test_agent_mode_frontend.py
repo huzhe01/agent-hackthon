@@ -381,6 +381,21 @@ class AgentModeFrontendTest(unittest.TestCase):
         ]:
             self.assertNotIn(removed_marker, page_source)
 
+    def test_agent_mode_plan_generation_uses_five_second_loading_gate(self):
+        page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
+
+        for marker in [
+            "const PLAN_REVEAL_DELAY_MS = 5000",
+            "function PlanGeneratingCanvas",
+            "planRevealPending",
+            "startPlanRevealDelay",
+            "shouldDelayPlanReveal",
+            "window.setTimeout(() => setPlanRevealPending(false), PLAN_REVEAL_DELAY_MS)",
+            "正在生成投放方案",
+            "planRevealPending={planRevealPending}",
+        ]:
+            self.assertIn(marker, page_source)
+
     def test_agent_mode_terminal_live_state_releases_review_canvas(self):
         page_source = (ROOT / "frontend/src/agent-mode/AgentModePage.jsx").read_text(encoding="utf-8")
         live_render_source = page_source[
